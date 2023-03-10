@@ -553,18 +553,19 @@ impl Display for DataFrame {
                 table.set_width(100);
             }
 
-            // set alignment of cells, if defined
-            if std::env::var(FMT_TABLE_CELL_ALIGNMENT).is_ok() {
-                // for (column_index, column) in table.column_iter_mut().enumerate() {
-                let str_preset = std::env::var(FMT_TABLE_CELL_ALIGNMENT)
-                    .unwrap_or_else(|_| "DEFAULT".to_string());
-                for column in table.column_iter_mut() {
-                    if str_preset == "RIGHT" {
+            let str_preset =
+                std::env::var(FMT_TABLE_CELL_ALIGNMENT).unwrap_or_else(|_| "DEFAULT".to_string());
+            for (column_index, column) in table.column_iter_mut().enumerate() {
+                if str_preset == "RIGHT" {
+                    column.set_cell_alignment(CellAlignment::Right);
+                } else if str_preset == "LEFT" {
+                    column.set_cell_alignment(CellAlignment::Left);
+                } else if str_preset == "CENTER" {
+                    column.set_cell_alignment(CellAlignment::Center);
+                } else {
+                    let dtype = fields[column_index].data_type();
+                    if dtype.to_physical().is_numeric() {
                         column.set_cell_alignment(CellAlignment::Right);
-                    } else if str_preset == "LEFT" {
-                        column.set_cell_alignment(CellAlignment::Left);
-                    } else if str_preset == "CENTER" {
-                        column.set_cell_alignment(CellAlignment::Center);
                     } else {
                         column.set_cell_alignment(CellAlignment::Left);
                     }
