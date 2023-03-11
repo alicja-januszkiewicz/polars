@@ -553,22 +553,25 @@ impl Display for DataFrame {
                 table.set_width(100);
             }
 
-            let str_preset =
-                std::env::var(FMT_TABLE_CELL_ALIGNMENT).unwrap_or_else(|_| "DEFAULT".to_string());
-            for (column_index, column) in table.column_iter_mut().enumerate() {
-                if str_preset == "RIGHT" {
-                    column.set_cell_alignment(CellAlignment::Right);
-                } else if str_preset == "LEFT" {
-                    column.set_cell_alignment(CellAlignment::Left);
-                } else if str_preset == "CENTER" {
-                    column.set_cell_alignment(CellAlignment::Center);
-                } else {
+            // set alignment of cells, if defined
+            if std::env::var(FMT_TABLE_CELL_ALIGNMENT).is_ok() {
+                let str_preset = std::env::var(FMT_TABLE_CELL_ALIGNMENT)
+                    .unwrap_or_else(|_| "DEFAULT".to_string());
+                for column in table.column_iter_mut() {
+                    match str_preset.as_str() {
+                        "RIGHT" => column.set_cell_alignment(CellAlignment::Right),
+                        "LEFT" => column.set_cell_alignment(CellAlignment::Left),
+                        "CENTER" => column.set_cell_alignment(CellAlignment::Center),
+                        _ => {}
+                    }
+                }
+            } else {
+                // set default alignment to right for numeric cells
+                for (column_index, column) in table.column_iter_mut().enumerate() {
                     let dtype = fields[column_index].data_type();
                     if dtype.to_physical().is_numeric() {
-                        column.set_cell_alignment(CellAlignment::Right);
-                    } else {
-                        column.set_cell_alignment(CellAlignment::Left);
-                    }
+                        column.set_cell_alignment(CellAlignment::Right)
+                    };
                 }
             }
 
