@@ -38,6 +38,7 @@ POLARS_CFG_ENV_VARS = {
     "POLARS_TABLE_WIDTH",
     "POLARS_VERBOSE",
     "POLARS_ACTIVATE_DECIMAL",
+    "POLARS_FMT_FLOAT_PRECISION",
     "POLARS_STREAMING_CHUNK_SIZE",
 }
 
@@ -241,6 +242,46 @@ class Config:
 
         """
         os.environ["POLARS_FMT_TABLE_CELL_ALIGNMENT"] = format
+        return cls
+
+    @classmethod
+    def set_tbl_cell_numeric_alignment(
+        cls, format: Literal["LEFT", "CENTER", "RIGHT"]
+    ) -> type[Config]:
+        """
+        Set table cell alignment for numeric columns.
+
+        Parameters
+        ----------
+        format : str
+            * "LEFT": left aligned
+            * "CENTER": center aligned
+            * "RIGHT": right aligned
+
+        Examples
+        --------
+        >>> df = pl.DataFrame(
+        ...     {"column_abc": [11, 2, 333], "column_xyz": [True, False, True]}
+        ... )
+        >>> pl.Config.set_tbl_cell_numeric_alignment("RIGHT")  # doctest: +SKIP
+        # ...
+        # shape: (3, 2)
+        # ┌────────────┬────────────┐
+        # │ column_abc ┆ column_xyz │
+        # │        --- ┆        --- │
+        # │        i64 ┆       bool │
+        # ╞════════════╪════════════╡
+        # │         11 ┆ true       │
+        # │          2 ┆ false      │
+        # │        333 ┆ true       │
+        # └────────────┴────────────┘
+
+        Raises
+        ------
+        KeyError: if alignment string not recognised.
+
+        """
+        os.environ["POLARS_FMT_TABLE_CELL_NUMERIC_ALIGNMENT"] = format
         return cls
 
     @classmethod
@@ -574,12 +615,26 @@ class Config:
         return cls
 
     @classmethod
+    def set_float_precision(cls, precision: int = 1) -> type[Config]:
+        """
+        Control how floating point values are displayed.
+
+        Parameters
+        ----------
+        precision : int
+            Number of decimal places to display
+
+        """
+        os.environ["POLARS_FMT_FLOAT_PRECISION"] = str(precision)
+        return cls
+
+    @classmethod
     def activate_decimals(cls) -> type[Config]:
         """
         Activate ``Decimal`` data types.
 
         This is temporary setting that will be removed later once
-        ``Decimal`` type stabilize. This happens without it being
+        ``Decimal`` type stabilizes. This happens without it being
         considered a breaking change.
 
         Currently, ``Decimal`` types are in alpha stage.

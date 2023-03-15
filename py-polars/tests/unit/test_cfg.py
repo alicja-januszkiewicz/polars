@@ -387,6 +387,57 @@ def test_shape_below_table_and_inlined_dtype() -> None:
     )
 
 
+def test_numeric_right_alignment() -> None:
+    pl.Config.set_tbl_cell_numeric_alignment("RIGHT")
+    pl.Config.set_float_precision(3)
+
+    df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+    assert (
+        str(df) == "shape: (3, 3)\n"
+        "┌─────┬─────┬─────┐\n"
+        "│   a ┆   b ┆   c │\n"
+        "│ --- ┆ --- ┆ --- │\n"
+        "│ i64 ┆ i64 ┆ i64 │\n"
+        "╞═════╪═════╪═════╡\n"
+        "│   1 ┆   4 ┆   7 │\n"
+        "│   2 ┆   5 ┆   8 │\n"
+        "│   3 ┆   6 ┆   9 │\n"
+        "└─────┴─────┴─────┘"
+    )
+
+    df = pl.DataFrame(
+        {"a": [1.1, 2.22, 3.333], "b": [4.0, 5.0, 6.0], "c": [7.0, 8.0, 9.0]}
+    )
+
+    pl.Config.set_fmt_float("mixed")
+    assert (
+        str(df) == "shape: (3, 3)\n"
+        "┌─────────┬─────────┬─────────┐\n"
+        "│       a ┆       b ┆       c │\n"
+        "│     --- ┆     --- ┆     --- │\n"
+        "│     f64 ┆     f64 ┆     f64 │\n"
+        "╞═════════╪═════════╪═════════╡\n"
+        "│ 1.100e0 ┆ 4.000e0 ┆ 7.000e0 │\n"
+        "│ 2.220e0 ┆ 5.000e0 ┆ 8.000e0 │\n"
+        "│ 3.333e0 ┆ 6.000e0 ┆ 9.000e0 │\n"
+        "└─────────┴─────────┴─────────┘"
+    )
+
+    pl.Config.set_fmt_float("full")
+    assert (
+        str(df) == "shape: (3, 3)\n"
+        "┌───────┬─────┬─────┐\n"
+        "│     a ┆   b ┆   c │\n"
+        "│   --- ┆ --- ┆ --- │\n"
+        "│   f64 ┆ f64 ┆ f64 │\n"
+        "╞═══════╪═════╪═════╡\n"
+        "│   1.1 ┆   4 ┆   7 │\n"
+        "│  2.22 ┆   5 ┆   8 │\n"
+        "│ 3.333 ┆   6 ┆   9 │\n"
+        "└───────┴─────┴─────┘"
+    )
+
+
 def test_string_cache() -> None:
     df1 = pl.DataFrame({"a": ["foo", "bar", "ham"], "b": [1, 2, 3]})
     df2 = pl.DataFrame({"a": ["foo", "spam", "eggs"], "c": [3, 2, 2]})

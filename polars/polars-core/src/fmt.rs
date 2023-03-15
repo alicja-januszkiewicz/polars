@@ -554,24 +554,25 @@ impl Display for DataFrame {
             }
 
             // set alignment of cells, if defined
-            if std::env::var(FMT_TABLE_CELL_ALIGNMENT).is_ok() {
+            if std::env::var(FMT_TABLE_CELL_ALIGNMENT).is_ok()
+                | std::env::var(FMT_TABLE_CELL_NUMERIC_ALIGNMENT).is_ok()
+            {
                 let str_preset = std::env::var(FMT_TABLE_CELL_ALIGNMENT)
                     .unwrap_or_else(|_| "DEFAULT".to_string());
-                for column in table.column_iter_mut() {
-                    match str_preset.as_str() {
+                let num_preset = std::env::var(FMT_TABLE_CELL_NUMERIC_ALIGNMENT)
+                    .unwrap_or_else(|_| str_preset.to_string());
+                for (column_index, column) in table.column_iter_mut().enumerate() {
+                    let dtype = fields[column_index].data_type();
+                    let mut preset = str_preset.as_str();
+                    if dtype.to_physical().is_numeric() {
+                        preset = num_preset.as_str();
+                    }
+                    match preset {
                         "RIGHT" => column.set_cell_alignment(CellAlignment::Right),
                         "LEFT" => column.set_cell_alignment(CellAlignment::Left),
                         "CENTER" => column.set_cell_alignment(CellAlignment::Center),
                         _ => {}
                     }
-                }
-            } else {
-                // set default alignment to right for numeric cells
-                for (column_index, column) in table.column_iter_mut().enumerate() {
-                    let dtype = fields[column_index].data_type();
-                    if dtype.to_physical().is_numeric() {
-                        column.set_cell_alignment(CellAlignment::Right)
-                    };
                 }
             }
 
@@ -609,8 +610,30 @@ fn fmt_integer<T: Num + NumCast + Display>(
 const SCIENTIFIC_BOUND: f64 = 999999.0;
 fn fmt_float<T: Num + NumCast>(f: &mut Formatter<'_>, width: usize, v: T) -> fmt::Result {
     let v: f64 = NumCast::from(v).unwrap();
+
+    match get_float_fmt() {
+        FloatFmt::Full => {
+            println!("float format is full");
+        }
+        FloatFmt::Mixed => {
+            println!("float format is mixed");
+        }
+    }
+
     if matches!(get_float_fmt(), FloatFmt::Full) {
         return write!(f, "{v:>width$}");
+    }
+
+    if let Ok(precision) = std::env::var(FMT_FLOAT_PRECISION)
+        .as_deref()
+        .unwrap_or("")
+        .parse::<usize>()
+    {
+        return write!(f, "{v:>width$.precision$e}");
+        // if (format!("{v}").len() > 9) & (!(0.000001..=SCIENTIFIC_BOUND).contains(&v.abs()) | (v.abs() > SCIENTIFIC_BOUND)) {
+        //     return write!(f, "{v:>width$.precision$e}");
+        // }
+        // return write!(f, "{v:>width$.precision$}");
     }
 
     // show integers as 0.0, 1.0 ... 101.0
