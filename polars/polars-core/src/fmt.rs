@@ -611,29 +611,19 @@ const SCIENTIFIC_BOUND: f64 = 999999.0;
 fn fmt_float<T: Num + NumCast>(f: &mut Formatter<'_>, width: usize, v: T) -> fmt::Result {
     let v: f64 = NumCast::from(v).unwrap();
 
-    match get_float_fmt() {
-        FloatFmt::Full => {
-            println!("float format is full");
-        }
-        FloatFmt::Mixed => {
-            println!("float format is mixed");
-        }
-    }
-
-    if matches!(get_float_fmt(), FloatFmt::Full) {
-        return write!(f, "{v:>width$}");
-    }
-
     if let Ok(precision) = std::env::var(FMT_FLOAT_PRECISION)
         .as_deref()
         .unwrap_or("")
         .parse::<usize>()
     {
-        return write!(f, "{v:>width$.precision$e}");
-        // if (format!("{v}").len() > 9) & (!(0.000001..=SCIENTIFIC_BOUND).contains(&v.abs()) | (v.abs() > SCIENTIFIC_BOUND)) {
-        //     return write!(f, "{v:>width$.precision$e}");
-        // }
-        // return write!(f, "{v:>width$.precision$}");
+        if format!("{v:.precision$}").len() > 9 {
+            return write!(f, "{v:>width$.precision$e}");
+        }
+        return write!(f, "{v:>width$.precision$}");
+    }
+
+    if matches!(get_float_fmt(), FloatFmt::Full) {
+        return write!(f, "{v:>width$}");
     }
 
     // show integers as 0.0, 1.0 ... 101.0
