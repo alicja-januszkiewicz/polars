@@ -594,6 +594,13 @@ fn set_float_fmt(fmt: &str) -> PyResult<()> {
     Ok(())
 }
 
+#[pyfunction]
+fn set_float_precision(precision: u8) -> PyResult<()> {
+    use polars_core::fmt::{set_float_precision};
+    set_float_precision(precision);
+    Ok(())
+}
+
 #[pymodule]
 fn polars(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("ArrowError", py.get_type::<ArrowErrorException>())
@@ -692,5 +699,6 @@ fn polars(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(get_index_type)).unwrap();
     m.add_wrapped(wrap_pyfunction!(coalesce_exprs)).unwrap();
     m.add_wrapped(wrap_pyfunction!(set_float_fmt)).unwrap();
+    m.add_wrapped(wrap_pyfunction!(set_float_precision)).unwrap();
     Ok(())
 }

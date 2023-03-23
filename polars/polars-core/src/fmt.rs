@@ -34,6 +34,7 @@ pub enum FloatFmt {
     Full,
 }
 static FLOAT_FMT: AtomicU8 = AtomicU8::new(FloatFmt::Mixed as u8);
+static FLOAT_PRECISION: AtomicU8 = AtomicU8::new(u8::MAX);
 
 fn get_float_fmt() -> FloatFmt {
     match FLOAT_FMT.load(Ordering::Relaxed) {
@@ -43,8 +44,16 @@ fn get_float_fmt() -> FloatFmt {
     }
 }
 
+fn get_float_precision() -> u8 {
+    FLOAT_PRECISION.load(Ordering::Relaxed)
+}
+
 pub fn set_float_fmt(fmt: FloatFmt) {
     FLOAT_FMT.store(fmt as u8, Ordering::Relaxed)
+}
+
+pub fn set_float_precision(precision: u8) {
+    FLOAT_PRECISION.store(precision, Ordering::Relaxed)
 }
 
 macro_rules! format_array {
@@ -611,15 +620,12 @@ const SCIENTIFIC_BOUND: f64 = 999999.0;
 fn fmt_float<T: Num + NumCast>(f: &mut Formatter<'_>, width: usize, v: T) -> fmt::Result {
     let v: f64 = NumCast::from(v).unwrap();
 
-    if let Ok(precision) = std::env::var(FMT_FLOAT_PRECISION)
-        .as_deref()
-        .unwrap_or("")
-        .parse::<usize>()
-    {
-        if format!("{v:.precision$}").len() > 9 {
-            return write!(f, "{v:>width$.precision$e}");
+    let precision = get_float_precision();
+    if precision != u8::MAX {
+        if format!("{v:.precision$}", precision = precision as usize).len() > 19 {
+            return write!(f, "{v:>width$.precision$e}", precision = precision as usize);
         }
-        return write!(f, "{v:>width$.precision$}");
+        return write!(f, "{v:>width$.precision$}", precision = precision as usize);
     }
 
     if matches!(get_float_fmt(), FloatFmt::Full) {

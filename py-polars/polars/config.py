@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 with contextlib.suppress(ImportError):  # Module not available when building docs
     from polars.polars import set_float_fmt as _set_float_fmt
+    from polars.polars import set_float_precision as _set_float_precision
 
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ POLARS_CFG_ENV_VARS = {
     "POLARS_FMT_MAX_COLS",
     "POLARS_FMT_MAX_ROWS",
     "POLARS_FMT_STR_LEN",
+    "POLARS_FMT_NUM_LEN",
     "POLARS_FMT_TABLE_CELL_ALIGNMENT",
     "POLARS_FMT_TABLE_CELL_NUMERIC_ALIGNMENT",
     "POLARS_FMT_TABLE_DATAFRAME_SHAPE_BELOW",
@@ -39,7 +41,6 @@ POLARS_CFG_ENV_VARS = {
     "POLARS_TABLE_WIDTH",
     "POLARS_VERBOSE",
     "POLARS_ACTIVATE_DECIMAL",
-    "POLARS_FMT_FLOAT_PRECISION",
     "POLARS_STREAMING_CHUNK_SIZE",
 }
 
@@ -616,7 +617,7 @@ class Config:
         return cls
 
     @classmethod
-    def set_float_precision(cls, precision: int = 1) -> type[Config]:
+    def set_float_precision(cls, precision: int = 255) -> type[Config]:
         """
         Control how floating point values are displayed.
 
@@ -626,7 +627,7 @@ class Config:
             Number of decimal places to display
 
         """
-        os.environ["POLARS_FMT_FLOAT_PRECISION"] = str(precision)
+        _set_float_precision(precision)
         return cls
 
     @classmethod
