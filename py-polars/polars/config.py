@@ -11,15 +11,18 @@ from polars.dependencies import json
 def _get_float_fmt() -> str:
     return "n/a"
 
-def _set_float_precision() -> str:
+
+def _get_float_precision() -> str:
     return "n/a"
 
 
 # note: module not available when building docs
 with contextlib.suppress(ImportError):
     from polars.polars import get_float_fmt as _get_float_fmt  # type: ignore[no-redef]
+    from polars.polars import (  # type: ignore[no-redef]
+        get_float_precision as _get_float_precision,
+    )
     from polars.polars import set_float_fmt as _set_float_fmt
-    from polars.polars import get_float_precision as _get_float_precision
     from polars.polars import set_float_precision as _set_float_precision
 
 if TYPE_CHECKING:
@@ -43,7 +46,6 @@ _POLARS_CFG_ENV_VARS = {
     "POLARS_FMT_MAX_COLS",
     "POLARS_FMT_MAX_ROWS",
     "POLARS_FMT_STR_LEN",
-    "POLARS_FMT_NUM_LEN",
     "POLARS_FMT_TABLE_CELL_ALIGNMENT",
     "POLARS_FMT_TABLE_CELL_NUMERIC_ALIGNMENT",
     "POLARS_FMT_TABLE_DATAFRAME_SHAPE_BELOW",
@@ -134,6 +136,7 @@ class Config:
         for var in _POLARS_CFG_ENV_VARS:
             os.environ.pop(var, None)
         cls.set_fmt_float()
+        cls.set_float_precision()
         return cls
 
     @classmethod
@@ -687,7 +690,7 @@ class Config:
         return cls
 
     @classmethod
-    def set_float_precision(cls, precision: int = 255) -> type[Config]:
+    def set_float_precision(cls, precision: str = "255") -> type[Config]:
         """
         Control how floating point values are displayed.
 

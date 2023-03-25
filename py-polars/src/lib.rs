@@ -605,15 +605,25 @@ fn get_float_fmt() -> PyResult<String> {
 }
 
 #[pyfunction]
-fn set_float_precision(precision: u8) -> PyResult<()> {
-    use polars_core::fmt::{set_float_precision};
-    set_float_precision(precision);
+fn set_float_precision(precision: &str) -> PyResult<()> {
+    use polars_core::fmt::set_float_precision;
+    let precision_u8 = match precision.parse::<u8>() {
+        Ok(value) => value,
+        Err(e) => {
+            return Err(PyValueError::new_err(format!(
+                "precision must be a number between 0-255, got {e}",
+            )))
+        }
+    };
+    set_float_precision(precision_u8);
     Ok(())
+}
 
 #[pyfunction]
-fn get_float_precision(precision: u8) -> PyResult<()> {
-    use polars_core::fmt::{get_float_precision};
-    Ok(get_float_precision(precision))
+fn get_float_precision() -> PyResult<String> {
+    use polars_core::fmt::get_float_precision;
+    Ok(get_float_precision().to_string())
+}
 
 #[pymodule]
 fn polars(py: Python, m: &PyModule) -> PyResult<()> {
@@ -714,7 +724,9 @@ fn polars(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(coalesce_exprs)).unwrap();
     m.add_wrapped(wrap_pyfunction!(set_float_fmt)).unwrap();
     m.add_wrapped(wrap_pyfunction!(get_float_fmt)).unwrap();
-    m.add_wrapped(wrap_pyfunction!(set_float_precision)).unwrap();
-    m.add_wrapped(wrap_pyfunction!(get_float_precision)).unwrap();
+    m.add_wrapped(wrap_pyfunction!(set_float_precision))
+        .unwrap();
+    m.add_wrapped(wrap_pyfunction!(get_float_precision))
+        .unwrap();
     Ok(())
 }

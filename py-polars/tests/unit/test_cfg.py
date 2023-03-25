@@ -6,7 +6,7 @@ from typing import Iterator
 import pytest
 
 import polars as pl
-from polars.config import _get_float_fmt
+from polars.config import _get_float_fmt, _get_float_precision
 from polars.testing import assert_frame_equal
 
 
@@ -441,7 +441,7 @@ def test_numeric_right_alignment() -> None:
     )
     with pl.Config():
         pl.Config.set_fmt_float("full")
-        pl.Config.set_float_precision(1)
+        pl.Config.set_float_precision("1")
         assert (
             str(df) == "shape: (3, 3)\n"
             "┌──────┬───────┬────────┐\n"
@@ -463,7 +463,7 @@ def test_numeric_right_alignment() -> None:
         }
     )
     with pl.Config():
-        pl.Config.set_float_precision(2)
+        pl.Config.set_float_precision("2")
         assert (
             str(df) == "shape: (3, 3)\n"
             "┌─────────┬─────────┬───────────┐\n"
@@ -510,6 +510,7 @@ def test_config_load_save() -> None:
     pl.Config.set_tbl_cols(12)
     pl.Config.set_verbose(True)
     pl.Config.set_fmt_float("full")
+    pl.Config.set_float_precision("6")
     assert os.environ.get("POLARS_VERBOSE") == "1"
 
     cfg = pl.Config.save()
@@ -519,6 +520,8 @@ def test_config_load_save() -> None:
     # ...modify the same options...
     pl.Config.set_tbl_cols(10)
     pl.Config.set_verbose(False)
+    pl.Config.set_fmt_float("mixed")
+    pl.Config.set_float_precision("2")
     assert os.environ.get("POLARS_VERBOSE") == "0"
 
     # ...load back from config...
@@ -528,6 +531,7 @@ def test_config_load_save() -> None:
     assert os.environ.get("POLARS_FMT_MAX_COLS") == "12"
     assert os.environ.get("POLARS_VERBOSE") == "1"
     assert _get_float_fmt() == "full"
+    assert _get_float_precision() == "6"
 
     # restore all default options (unsets from env)
     pl.Config.restore_defaults()
@@ -538,6 +542,7 @@ def test_config_load_save() -> None:
     assert os.environ.get("POLARS_FMT_MAX_COLS") is None
     assert os.environ.get("POLARS_VERBOSE") is None
     assert _get_float_fmt() == "mixed"
+    assert _get_float_precision() == "255"
 
 
 def test_config_scope() -> None:

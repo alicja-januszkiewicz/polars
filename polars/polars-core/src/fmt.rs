@@ -44,7 +44,7 @@ pub fn get_float_fmt() -> FloatFmt {
     }
 }
 
-fn get_float_precision() -> u8 {
+pub fn get_float_precision() -> u8 {
     FLOAT_PRECISION.load(Ordering::Relaxed)
 }
 
