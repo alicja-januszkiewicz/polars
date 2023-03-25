@@ -11,6 +11,7 @@ from polars.convert import (
     from_pandas,
     from_records,
 )
+from polars.dataframe import DataFrame
 from polars.datatypes import (
     DATETIME_DTYPES,
     DURATION_DTYPES,
@@ -36,7 +37,6 @@ from polars.datatypes import (
     List,
     Null,
     Object,
-    PolarsDataType,
     Struct,
     Time,
     UInt8,
@@ -59,14 +59,8 @@ from polars.exceptions import (
     ShapeError,
     StructFieldNotFoundError,
 )
-
-# TODO remove need for wrap_df
-from polars.internals.dataframe import (
-    DataFrame,
-    wrap_df,  # noqa: F401
-)
-from polars.internals.expr.expr import Expr
-from polars.internals.functions import (
+from polars.expr import Expr
+from polars.functions.eager import (
     align_frames,
     concat,
     cut,
@@ -75,8 +69,7 @@ from polars.internals.functions import (
     ones,
     zeros,
 )
-from polars.internals.io import read_ipc_schema, read_parquet_schema
-from polars.internals.lazy_functions import (
+from polars.functions.lazy import (
     all,
     any,
     apply,
@@ -125,16 +118,10 @@ from polars.internals.lazy_functions import (
     tail,
     var,
 )
-from polars.internals.lazy_functions import date_ as date
-from polars.internals.lazy_functions import datetime_ as datetime
-from polars.internals.lazy_functions import list_ as list
-from polars.internals.lazyframe import LazyFrame
-
-# TODO: remove need for wrap_s
-from polars.internals.series import wrap_s  # noqa: F401
-from polars.internals.series.series import Series
-from polars.internals.sql import SQLContext
-from polars.internals.whenthen import when
+from polars.functions.lazy import date_ as date
+from polars.functions.lazy import datetime_ as datetime
+from polars.functions.lazy import list_ as list
+from polars.functions.whenthen import when
 from polars.io import (
     read_avro,
     read_csv,
@@ -143,9 +130,11 @@ from polars.io import (
     read_delta,
     read_excel,
     read_ipc,
+    read_ipc_schema,
     read_json,
     read_ndjson,
     read_parquet,
+    read_parquet_schema,
     read_sql,
     scan_csv,
     scan_delta,
@@ -155,7 +144,11 @@ from polars.io import (
     scan_parquet,
     scan_pyarrow_dataset,
 )
+from polars.lazyframe import LazyFrame
+from polars.series import Series
+from polars.sql import SQLContext
 from polars.string_cache import StringCache, toggle_string_cache, using_string_cache
+from polars.type_aliases import PolarsDataType
 from polars.utils import (
     build_info,
     get_idx_type,
@@ -163,6 +156,9 @@ from polars.utils import (
     show_versions,
     threadpool_size,
 )
+
+# TODO: remove need for importing wrap utils at top level
+from polars.utils._wrap import wrap_df, wrap_s  # noqa: F401
 from polars.utils.polars_version import get_polars_version as _get_polars_version
 
 __version__: str = _get_polars_version()
@@ -207,7 +203,6 @@ __all__ = [
     "List",
     "Null",
     "Object",
-    "PolarsDataType",
     "Struct",
     "Time",
     "UInt16",
@@ -223,6 +218,8 @@ __all__ = [
     "INTEGER_DTYPES",
     "NUMERIC_DTYPES",
     "TEMPORAL_DTYPES",
+    # polars.type_aliases
+    "PolarsDataType",
     # polars.io
     "read_avro",
     "read_csv",
@@ -250,9 +247,9 @@ __all__ = [
     "using_string_cache",
     # polars.config
     "Config",
-    # polars.internals.whenthen
+    # polars.functions.whenthen
     "when",
-    # polars.internals.functions
+    # polars.functions
     "align_frames",
     "arg_where",
     "concat",
@@ -263,7 +260,7 @@ __all__ = [
     "ones",
     "repeat",
     "zeros",
-    # polars.internals.lazy_functions
+    # polars.functions.lazy
     "all",
     "any",
     "apply",
@@ -311,7 +308,6 @@ __all__ = [
     "sum",
     "tail",
     "var",
-    "var",
     # polars.convert
     "from_arrow",
     "from_dataframe",
@@ -320,9 +316,9 @@ __all__ = [
     "from_numpy",
     "from_pandas",
     "from_records",
-    # sql
+    # polars.sql
     "SQLContext",
-    # utils
+    # polars.utils
     "build_info",
     "get_idx_type",
     "get_index_type",

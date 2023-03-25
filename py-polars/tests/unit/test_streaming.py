@@ -176,7 +176,7 @@ def test_streaming_categoricals_5921() -> None:
             .with_columns(pl.col("X").cast(pl.Categorical))
             .groupby("X")
             .agg(pl.col("Y").min())
-            .sort("X")
+            .sort("Y", descending=True)
             .collect(streaming=True)
         )
 
@@ -185,7 +185,7 @@ def test_streaming_categoricals_5921() -> None:
             .with_columns(pl.col("X").cast(pl.Categorical))
             .groupby("X")
             .agg(pl.col("Y").min())
-            .sort("X")
+            .sort("Y", descending=True)
         )
 
     for out in [out_eager, out_lazy]:
@@ -339,3 +339,77 @@ def test_streaming_unique(monkeypatch: Any, capfd: Any) -> None:
     assert_frame_equal(q.collect(streaming=True), q.collect(streaming=False))
     (_, err) = capfd.readouterr()
     assert "df -> re-project-sink -> sort_multiple" in err
+
+
+@pytest.mark.write_disk()
+def test_streaming_sort(monkeypatch: Any, capfd: Any) -> None:
+    monkeypatch.setenv("POLARS_VERBOSE", "1")
+    monkeypatch.setenv("POLARS_FORCE_OOC_SORT", "1")
+    # this creates a lot of duplicate partitions and triggers: #7568
+    assert (
+        pl.Series(np.random.randint(0, 100, 100))
+        .to_frame("s")
+        .lazy()
+        .sort("s")
+        .collect(streaming=True)["s"]
+        .is_sorted()
+    )
+    (_, err) = capfd.readouterr()
+    assert "df -> sort" in err
+
+
+@pytest.mark.write_disk()
+def test_streaming_groupby_ooc(monkeypatch: Any) -> None:
+    np.random.seed(1)
+    s = pl.Series("a", np.random.randint(0, 10, 100))
+
+    for env in ["POLARS_FORCE_OOC_SORT", "_NO_OP"]:
+        monkeypatch.setenv(env, "1")
+        q = (
+            s.to_frame()
+            .lazy()
+            .groupby("a")
+            .agg(pl.first("a").alias("a_first"), pl.last("a").alias("a_last"))
+            .sort("a")
+        )
+
+        assert q.collect(streaming=True).to_dict(False) == {
+            "a": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "a_first": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "a_last": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        }
+
+        q = (
+            s.cast(str)
+            .to_frame()
+            .lazy()
+            .groupby("a")
+            .agg(pl.first("a").alias("a_first"), pl.last("a").alias("a_last"))
+            .sort("a")
+        )
+
+        assert q.collect(streaming=True).to_dict(False) == {
+            "a": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "a_first": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "a_last": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        }
+
+        q = (
+            pl.DataFrame(
+                {
+                    "a": s,
+                    "b": s.rename("b"),
+                }
+            )
+            .lazy()
+            .groupby(["a", "b"])
+            .agg(pl.first("a").alias("a_first"), pl.last("a").alias("a_last"))
+            .sort("a")
+        )
+
+        assert q.collect(streaming=True).to_dict(False) == {
+            "a": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "b": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "a_first": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "a_last": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        }

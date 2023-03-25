@@ -16,6 +16,8 @@ use crate::chunked_array::cast::cast_chunks;
 use crate::chunked_array::object::extension::polars_extension::PolarsExtension;
 #[cfg(feature = "object")]
 use crate::chunked_array::object::extension::EXTENSION_NAME;
+#[cfg(feature = "dtype-decimal")]
+use crate::config::decimal_is_active;
 use crate::config::verbose;
 use crate::prelude::*;
 
@@ -288,7 +290,7 @@ impl Series {
             #[cfg(feature = "dtype-struct")]
             ArrowDataType::Struct(_) => {
                 let arr = if chunks.len() > 1 {
-                    // don't spuriously call this. This triggers a read on mmaped data
+                    // don't spuriously call this. This triggers a read on memmapped data
                     concatenate_owned_unchecked(&chunks).unwrap() as ArrayRef
                 } else {
                     chunks[0].clone()
@@ -350,7 +352,7 @@ impl Series {
                     let chunks =
                         cast_chunks(&chunks, &DataType::Decimal(precision, Some(scale)), false)
                             .unwrap();
-                    if std::env::var("POLARS_ACTIVATE_DECIMAL").is_ok() {
+                    if decimal_is_active() {
                         Ok(Int128Chunked::from_chunks(name, chunks)
                             .into_decimal_unchecked(precision, scale)
                             .into_series())

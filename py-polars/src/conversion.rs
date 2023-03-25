@@ -540,15 +540,12 @@ impl ToPyObject for Wrap<&DecimalChunked> {
         let py_precision = self.0.precision().unwrap_or(39).to_object(py);
         let iter = self.0.into_iter().map(|opt_v| {
             opt_v.map(|v| {
+                // TODO! use anyvalue so that we have a single impl.
                 let mut buf = [0_u8; 48];
                 let n_digits = decimal_to_digits(v.abs(), &mut buf);
+                let digits = PyTuple::new(py, buf.into_iter().take(n_digits));
                 convert
-                    .call1((
-                        v.is_negative() as u8,
-                        &buf[..n_digits],
-                        &py_precision,
-                        &py_scale,
-                    ))
+                    .call1((v.is_negative() as u8, digits, &py_precision, &py_scale))
                     .unwrap()
             })
         });
@@ -641,14 +638,19 @@ impl<'s> FromPyObject<'s> for Wrap<AnyValue<'s>> {
                         // windows
                         #[cfg(target_arch = "windows")]
                         let (seconds, microseconds) = {
-                            let kwargs = PyDict::new(py);
-                            kwargs.set_item("tzinfo", py.None())?;
-                            let dt = ob.call_method("replace", (), Some(kwargs))?;
-                            let localize = UTILS.getattr("_localize").unwrap();
-                            let loc_tz = localize.call1((dt, "UTC"));
+                            let tzinfo = ob.getattr("tzinfo")?;
+                            let dt = if tzinfo.is_none() {
+                                let kwargs = PyDict::new(py);
+                                kwargs.set_item("tzinfo", py.None())?;
+                                let dt = ob.call_method("replace", (), Some(kwargs))?;
+                                let localize = UTILS.getattr("_localize").unwrap();
+                                localize.call1((dt, "UTC"))
+                            } else {
+                                ob
+                            };
                             let kwargs = PyDict::new(py);
                             kwargs.set_item("microsecond", 0)?;
-                            let seconds = loc_tz
+                            let seconds = dt
                                 .call_method("replace", (), Some(kwargs))?
                                 .call_method0("timestamp")?;
                             let microseconds = dt.getattr("microsecond")?.extract::<i64>()?;
@@ -659,10 +661,14 @@ impl<'s> FromPyObject<'s> for Wrap<AnyValue<'s>> {
                         let (seconds, microseconds) = {
                             let datetime = PyModule::import(py, "datetime")?;
                             let timezone = datetime.getattr("timezone")?;
-                            let kwargs = PyDict::new(py);
-                            kwargs.set_item("tzinfo", timezone.getattr("utc")?)?;
-                            let dt = ob.call_method("replace", (), Some(kwargs))?;
-
+                            let tzinfo = ob.getattr("tzinfo")?;
+                            let dt = if tzinfo.is_none() {
+                                let kwargs = PyDict::new(py);
+                                kwargs.set_item("tzinfo", timezone.getattr("utc")?)?;
+                                ob.call_method("replace", (), Some(kwargs))?
+                            } else {
+                                ob
+                            };
                             let kwargs = PyDict::new(py);
                             kwargs.set_item("microsecond", 0)?;
                             let seconds = dt
@@ -1176,9 +1182,10 @@ impl FromPyObject<'_> for Wrap<UniqueKeepStrategy> {
             "first" => UniqueKeepStrategy::First,
             "last" => UniqueKeepStrategy::Last,
             "none" => UniqueKeepStrategy::None,
+            "any" => UniqueKeepStrategy::Any,
             v => {
                 return Err(PyValueError::new_err(format!(
-                    "keep must be one of {{'first', 'last'}}, got {v}",
+                    "keep must be one of {{'first', 'last', 'any', 'none'}}, got {v}",
                 )))
             }
         };

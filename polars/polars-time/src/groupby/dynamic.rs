@@ -1,3 +1,8 @@
+#[cfg(feature = "timezones")]
+use arrow::temporal_conversions::parse_offset;
+#[cfg(feature = "timezones")]
+use chrono_tz::Tz;
+use polars_arrow::time_zone::PolarsTimeZone;
 use polars_arrow::utils::CustomIterTools;
 use polars_core::export::rayon::prelude::*;
 use polars_core::frame::groupby::GroupsProxy;
@@ -107,25 +112,38 @@ impl Wrap<&DataFrame> {
         }
 
         use DataType::*;
-        let (dt, tu) = match time_type {
-            Datetime(tu, _) => (time.clone(), *tu),
+        let (dt, tu, tz): (Series, TimeUnit, Option<TimeZone>) = match time_type {
+            Datetime(tu, tz) => (time.clone(), *tu, tz.clone()),
             Date => (
                 time.cast(&Datetime(TimeUnit::Milliseconds, None))?,
                 TimeUnit::Milliseconds,
+                None,
             ),
             Int32 => {
                 let time_type = Datetime(TimeUnit::Nanoseconds, None);
                 let dt = time.cast(&Int64).unwrap().cast(&time_type).unwrap();
-                let (out, by, gt) =
-                    self.impl_groupby_rolling(dt, by, options, TimeUnit::Nanoseconds, &time_type)?;
+                let (out, by, gt) = self.impl_groupby_rolling(
+                    dt,
+                    by,
+                    options,
+                    TimeUnit::Nanoseconds,
+                    NO_TIMEZONE.copied(),
+                    &time_type,
+                )?;
                 let out = out.cast(&Int64).unwrap().cast(&Int32).unwrap();
                 return Ok((out, by, gt));
             }
             Int64 => {
                 let time_type = Datetime(TimeUnit::Nanoseconds, None);
                 let dt = time.cast(&time_type).unwrap();
-                let (out, by, gt) =
-                    self.impl_groupby_rolling(dt, by, options, TimeUnit::Nanoseconds, &time_type)?;
+                let (out, by, gt) = self.impl_groupby_rolling(
+                    dt,
+                    by,
+                    options,
+                    TimeUnit::Nanoseconds,
+                    NO_TIMEZONE.copied(),
+                    &time_type,
+                )?;
                 let out = out.cast(&Int64).unwrap();
                 return Ok((out, by, gt));
             }
@@ -135,7 +153,17 @@ impl Wrap<&DataFrame> {
                 dt
             ),
         };
-        self.impl_groupby_rolling(dt, by, options, tu, time_type)
+        match tz {
+            #[cfg(feature = "timezones")]
+            Some(tz) => match tz.parse::<Tz>() {
+                Ok(tz) => self.impl_groupby_rolling(dt, by, options, tu, Some(tz), time_type),
+                Err(_) => match parse_offset(&tz) {
+                    Ok(tz) => self.impl_groupby_rolling(dt, by, options, tu, Some(tz), time_type),
+                    Err(_) => unreachable!(),
+                },
+            },
+            _ => self.impl_groupby_rolling(dt, by, options, tu, NO_TIMEZONE.copied(), time_type),
+        }
     }
 
     /// Returns: time_keys, keys, groupsproxy
@@ -220,11 +248,6 @@ impl Wrap<&DataFrame> {
         let w = Window::new(options.every, options.period, options.offset);
         let dt = dt.datetime().unwrap();
         let tz = dt.time_zone();
-        let dt = match tz {
-            #[cfg(feature = "timezones")]
-            Some(_) => dt.replace_time_zone(None)?,
-            _ => dt.clone(),
-        };
 
         let mut lower_bound = None;
         let mut upper_bound = None;
@@ -262,6 +285,7 @@ impl Wrap<&DataFrame> {
                 ts,
                 options.closed_window,
                 tu,
+                tz,
                 include_lower_bound,
                 include_upper_bound,
                 options.start_by,
@@ -293,6 +317,7 @@ impl Wrap<&DataFrame> {
                                     ts,
                                     options.closed_window,
                                     tu,
+                                    tz,
                                     include_lower_bound,
                                     include_upper_bound,
                                     options.start_by,
@@ -322,6 +347,7 @@ impl Wrap<&DataFrame> {
                                     ts,
                                     options.closed_window,
                                     tu,
+                                    tz,
                                     include_lower_bound,
                                     include_upper_bound,
                                     options.start_by,
@@ -356,6 +382,7 @@ impl Wrap<&DataFrame> {
                                     ts,
                                     options.closed_window,
                                     tu,
+                                    tz,
                                     include_lower_bound,
                                     include_upper_bound,
                                     options.start_by,
@@ -377,6 +404,7 @@ impl Wrap<&DataFrame> {
                                     ts,
                                     options.closed_window,
                                     tu,
+                                    tz,
                                     include_lower_bound,
                                     include_upper_bound,
                                     options.start_by,
@@ -393,7 +421,7 @@ impl Wrap<&DataFrame> {
             }
         };
 
-        let dt = unsafe { dt.into_series().agg_first(&groups) };
+        let dt = unsafe { dt.clone().into_series().agg_first(&groups) };
         let mut dt = dt.datetime().unwrap().as_ref().clone();
         for key in by.iter_mut() {
             *key = unsafe { key.agg_first(&groups) };
@@ -409,43 +437,17 @@ impl Wrap<&DataFrame> {
 
         if let (true, Some(lower), Some(higher)) = (options.include_boundaries, lower, upper_bound)
         {
-            match tz {
-                #[cfg(feature = "timezones")]
-                Some(tz) => by.push(
-                    lower
-                        .into_datetime(tu, None)
-                        .replace_time_zone(Some(tz))?
-                        .into_series(),
-                ),
-                _ => by.push(lower.into_datetime(tu, None).into_series()),
-            };
-            let s = match tz {
-                #[cfg(feature = "timezones")]
-                Some(tz) => Int64Chunked::new_vec(UP_NAME, higher)
-                    .into_datetime(tu, None)
-                    .replace_time_zone(Some(tz))?
-                    .into_series(),
-                _ => Int64Chunked::new_vec(UP_NAME, higher)
-                    .into_datetime(tu, None)
-                    .into_series(),
-            };
+            by.push(lower.into_datetime(tu, tz.clone()).into_series());
+            let s = Int64Chunked::new_vec(UP_NAME, higher)
+                .into_datetime(tu, tz.clone())
+                .into_series();
             by.push(s);
         }
 
-        match tz {
-            #[cfg(feature = "timezones")]
-            Some(tz) => dt
-                .into_datetime(tu, None)
-                .replace_time_zone(Some(tz))?
-                .into_series()
-                .cast(time_type)
-                .map(|s| (s, by, groups)),
-            _ => dt
-                .into_datetime(tu, None)
-                .into_series()
-                .cast(time_type)
-                .map(|s| (s, by, groups)),
-        }
+        dt.into_datetime(tu, None)
+            .into_series()
+            .cast(time_type)
+            .map(|s| (s, by, groups))
     }
 
     /// Returns: time_keys, keys, groupsproxy
@@ -455,6 +457,7 @@ impl Wrap<&DataFrame> {
         by: Vec<Series>,
         options: &RollingGroupOptions,
         tu: TimeUnit,
+        tz: Option<impl PolarsTimeZone>,
         time_type: &DataType,
     ) -> PolarsResult<(Series, Vec<Series>, GroupsProxy)> {
         let mut dt = dt.rechunk();
@@ -473,6 +476,7 @@ impl Wrap<&DataFrame> {
                     ts,
                     options.closed_window,
                     tu,
+                    tz,
                 ),
                 rolling: true,
             }
@@ -504,6 +508,7 @@ impl Wrap<&DataFrame> {
                                 ts,
                                 options.closed_window,
                                 tu,
+                                tz.clone(),
                             );
                             update_subgroups_idx(&sub_groups, base_g)
                         })
@@ -524,6 +529,7 @@ impl Wrap<&DataFrame> {
                                 ts,
                                 options.closed_window,
                                 tu,
+                                tz.clone(),
                             );
                             update_subgroups_slice(&sub_groups, *base_g)
                         })

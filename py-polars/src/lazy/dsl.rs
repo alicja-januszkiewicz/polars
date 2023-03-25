@@ -942,6 +942,9 @@ impl PyExpr {
     pub fn year(&self) -> PyExpr {
         self.clone().inner.dt().year().into()
     }
+    pub fn is_leap_year(&self) -> PyExpr {
+        self.clone().inner.dt().is_leap_year().into()
+    }
     pub fn iso_year(&self) -> PyExpr {
         self.clone().inner.dt().iso_year().into()
     }
@@ -962,6 +965,15 @@ impl PyExpr {
     }
     pub fn ordinal_day(&self) -> PyExpr {
         self.clone().inner.dt().ordinal_day().into()
+    }
+    pub fn time(&self) -> PyExpr {
+        self.clone().inner.dt().time().into()
+    }
+    pub fn date(&self) -> PyExpr {
+        self.clone().inner.dt().date().into()
+    }
+    pub fn datetime(&self) -> PyExpr {
+        self.clone().inner.dt().datetime().into()
     }
     pub fn hour(&self) -> PyExpr {
         self.clone().inner.dt().hour().into()
@@ -1521,21 +1533,17 @@ impl PyExpr {
     }
 
     fn lst_reverse(&self) -> Self {
-        self.inner
-            .clone()
-            .arr()
-            .reverse()
-            .with_fmt("arr.reverse")
-            .into()
+        self.inner.clone().arr().reverse().into()
     }
 
-    fn lst_unique(&self) -> Self {
-        self.inner
-            .clone()
-            .arr()
-            .unique()
-            .with_fmt("arr.unique")
-            .into()
+    fn lst_unique(&self, maintain_order: bool) -> Self {
+        let e = self.inner.clone();
+
+        if maintain_order {
+            e.arr().unique_stable().into()
+        } else {
+            e.arr().unique().into()
+        }
     }
 
     fn lst_get(&self, index: PyExpr) -> Self {

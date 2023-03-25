@@ -6,6 +6,7 @@ from typing import Iterator
 import pytest
 
 import polars as pl
+from polars.config import _get_float_fmt
 from polars.testing import assert_frame_equal
 
 
@@ -82,9 +83,9 @@ def test_set_tbl_cols() -> None:
     df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
 
     pl.Config.set_tbl_cols(1)
-    assert str(df).split("\n")[2] == "│ a   ┆ ... │"
+    assert str(df).split("\n")[2] == "│ a   ┆ … │"
     pl.Config.set_tbl_cols(2)
-    assert str(df).split("\n")[2] == "│ a   ┆ ... ┆ c   │"
+    assert str(df).split("\n")[2] == "│ a   ┆ … ┆ c   │"
     pl.Config.set_tbl_cols(3)
     assert str(df).split("\n")[2] == "│ a   ┆ b   ┆ c   │"
 
@@ -92,9 +93,9 @@ def test_set_tbl_cols() -> None:
         {"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9], "d": [10, 11, 12]}
     )
     pl.Config.set_tbl_cols(2)
-    assert str(df).split("\n")[2] == "│ a   ┆ ... ┆ d   │"
+    assert str(df).split("\n")[2] == "│ a   ┆ … ┆ d   │"
     pl.Config.set_tbl_cols(3)
-    assert str(df).split("\n")[2] == "│ a   ┆ b   ┆ ... ┆ d   │"
+    assert str(df).split("\n")[2] == "│ a   ┆ b   ┆ … ┆ d   │"
     pl.Config.set_tbl_cols(-1)
     assert str(df).split("\n")[2] == "│ a   ┆ b   ┆ c   ┆ d   │"
 
@@ -111,10 +112,10 @@ def test_set_tbl_rows() -> None:
         "│ --- ┆ --- ┆ --- │\n"
         "│ i64 ┆ i64 ┆ i64 │\n"
         "╞═════╪═════╪═════╡\n"
-        "│ ... ┆ ... ┆ ... │\n"
+        "│ …   ┆ …   ┆ …   │\n"
         "└─────┴─────┴─────┘"
     )
-    assert str(ser) == "shape: (5,)\n" "Series: 'ser' [i64]\n" "[\n" "\t...\n" "]"
+    assert str(ser) == "shape: (5,)\n" "Series: 'ser' [i64]\n" "[\n" "\t…\n" "]"
 
     pl.Config.set_tbl_rows(1)
     assert (
@@ -125,12 +126,10 @@ def test_set_tbl_rows() -> None:
         "│ i64 ┆ i64 ┆ i64 │\n"
         "╞═════╪═════╪═════╡\n"
         "│ 1   ┆ 5   ┆ 9   │\n"
-        "│ ... ┆ ... ┆ ... │\n"
+        "│ …   ┆ …   ┆ …   │\n"
         "└─────┴─────┴─────┘"
     )
-    assert (
-        str(ser) == "shape: (5,)\n" "Series: 'ser' [i64]\n" "[\n" "\t1\n" "\t...\n" "]"
-    )
+    assert str(ser) == "shape: (5,)\n" "Series: 'ser' [i64]\n" "[\n" "\t1\n" "\t…\n" "]"
 
     pl.Config.set_tbl_rows(2)
     assert (
@@ -141,7 +140,7 @@ def test_set_tbl_rows() -> None:
         "│ i64 ┆ i64 ┆ i64 │\n"
         "╞═════╪═════╪═════╡\n"
         "│ 1   ┆ 5   ┆ 9   │\n"
-        "│ ... ┆ ... ┆ ... │\n"
+        "│ …   ┆ …   ┆ …   │\n"
         "│ 4   ┆ 8   ┆ 12  │\n"
         "└─────┴─────┴─────┘"
     )
@@ -150,7 +149,7 @@ def test_set_tbl_rows() -> None:
         "Series: 'ser' [i64]\n"
         "[\n"
         "\t1\n"
-        "\t...\n"
+        "\t…\n"
         "\t5\n"
         "]"
     )
@@ -164,7 +163,7 @@ def test_set_tbl_rows() -> None:
         "│ i64 ┆ i64 ┆ i64 │\n"
         "╞═════╪═════╪═════╡\n"
         "│ 1   ┆ 5   ┆ 9   │\n"
-        "│ ... ┆ ... ┆ ... │\n"
+        "│ …   ┆ …   ┆ …   │\n"
         "│ 3   ┆ 7   ┆ 11  │\n"
         "│ 4   ┆ 8   ┆ 12  │\n"
         "└─────┴─────┴─────┘"
@@ -174,7 +173,7 @@ def test_set_tbl_rows() -> None:
         "Series: 'ser' [i64]\n"
         "[\n"
         "\t1\n"
-        "\t...\n"
+        "\t…\n"
         "\t4\n"
         "\t5\n"
         "]"
@@ -200,7 +199,7 @@ def test_set_tbl_rows() -> None:
         "[\n"
         "\t1\n"
         "\t2\n"
-        "\t...\n"
+        "\t…\n"
         "\t4\n"
         "\t5\n"
         "]"
@@ -223,7 +222,7 @@ def test_set_tbl_rows() -> None:
         "│ i64 ┆ i64 ┆ i64 │\n"
         "╞═════╪═════╪═════╡\n"
         "│ 1   ┆ 6   ┆ 11  │\n"
-        "│ ... ┆ ... ┆ ... │\n"
+        "│ …   ┆ …   ┆ …   │\n"
         "│ 4   ┆ 9   ┆ 14  │\n"
         "│ 5   ┆ 10  ┆ 15  │\n"
         "└─────┴─────┴─────┘"
@@ -327,7 +326,7 @@ def test_set_tbl_width_chars() -> None:
             "this is 10": [4, 5, 6],
         }
     )
-    assert max(len(line) for line in str(df).split("\n")) == 72
+    assert max(len(line) for line in str(df).split("\n")) == 70
 
     pl.Config.set_tbl_width_chars(60)
     assert max(len(line) for line in str(df).split("\n")) == 60
@@ -510,6 +509,7 @@ def test_config_load_save() -> None:
     # set some config options...
     pl.Config.set_tbl_cols(12)
     pl.Config.set_verbose(True)
+    pl.Config.set_fmt_float("full")
     assert os.environ.get("POLARS_VERBOSE") == "1"
 
     cfg = pl.Config.save()
@@ -527,6 +527,7 @@ def test_config_load_save() -> None:
     # ...and confirm the saved options were set.
     assert os.environ.get("POLARS_FMT_MAX_COLS") == "12"
     assert os.environ.get("POLARS_VERBOSE") == "1"
+    assert _get_float_fmt() == "full"
 
     # restore all default options (unsets from env)
     pl.Config.restore_defaults()
@@ -536,6 +537,7 @@ def test_config_load_save() -> None:
 
     assert os.environ.get("POLARS_FMT_MAX_COLS") is None
     assert os.environ.get("POLARS_VERBOSE") is None
+    assert _get_float_fmt() == "mixed"
 
 
 def test_config_scope() -> None:

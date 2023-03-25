@@ -160,6 +160,7 @@ pub(crate) mod private {
         fn group_tuples(&self, _multithreaded: bool, _sorted: bool) -> PolarsResult<GroupsProxy> {
             invalid_operation_panic!(group_tuples, self)
         }
+        #[cfg(feature = "zip_with")]
         fn zip_with_same_type(
             &self,
             _mask: &BooleanChunked,
@@ -167,7 +168,7 @@ pub(crate) mod private {
         ) -> PolarsResult<Series> {
             invalid_operation_panic!(zip_with_same_type, self)
         }
-        #[cfg(feature = "sort_multiple")]
+
         fn arg_sort_multiple(&self, _by: &[Series], _descending: &[bool]) -> PolarsResult<IdxCa> {
             polars_bail!(opq = arg_sort_multiple, self._dtype());
         }
@@ -198,9 +199,8 @@ pub trait SeriesTrait:
     }
 
     /// Get the lengths of the underlying chunks
-    fn chunk_lengths(&self) -> ChunkIdIter {
-        invalid_operation_panic!(chunk_lengths, self)
-    }
+    fn chunk_lengths(&self) -> ChunkIdIter;
+
     /// Name of series.
     fn name(&self) -> &str;
 

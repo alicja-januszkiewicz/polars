@@ -251,6 +251,7 @@ def test_arg_sort_rank_nans() -> None:
 
 
 def test_top_k() -> None:
+    # expression
     s = pl.Series([3, 1, 2, 5, 8])
 
     assert s.top_k(3).to_list() == [8, 5, 3]
@@ -259,6 +260,24 @@ def test_top_k() -> None:
     # 5886
     df = pl.DataFrame({"test": [4, 3, 2, 1]})
     assert_frame_equal(df.select(pl.col("test").top_k(10)), df)
+
+    # dataframe
+    df = pl.DataFrame(
+        {
+            "a": [1, 2, 3, 4, 2, 2],
+            "b": [3, 2, 1, 4, 3, 2],
+        }
+    )
+
+    assert df.top_k(3, by=["a", "b"]).to_dict(False) == {"a": [4, 3, 2], "b": [4, 1, 3]}
+
+    assert df.top_k(
+        3,
+        by=["a", "b"],
+        descending=True,
+    ).to_dict(
+        False
+    ) == {"a": [1, 2, 2], "b": [3, 2, 2]}
 
 
 def test_sorted_flag_unset_by_arithmetic_4937() -> None:
@@ -451,7 +470,7 @@ def test_sort_args() -> None:
     assert_frame_equal(result, df)
 
 
-def test_sort_type_coersion_6892() -> None:
+def test_sort_type_coercion_6892() -> None:
     df = pl.DataFrame({"a": [2, 1], "b": [2, 3]})
     assert df.lazy().sort(pl.col("a") // 2).collect().to_dict(False) == {
         "a": [1, 2],
@@ -529,3 +548,9 @@ def test_sort_by_logical() -> None:
     assert df.groupby("name").agg([pl.col("num").sort_by(["dt1", "dt2"])]).sort(
         "name"
     ).to_dict(False) == {"name": ["a", "b"], "num": [[3, 1], [4]]}
+
+
+def test_limit_larger_than_sort() -> None:
+    assert pl.LazyFrame({"a": [1]}).sort("a").limit(30).collect().to_dict(False) == {
+        "a": [1]
+    }

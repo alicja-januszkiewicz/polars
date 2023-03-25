@@ -1,28 +1,44 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 from typing import TYPE_CHECKING
 
-with contextlib.suppress(ImportError):  # Module not available when building docs
-    from polars.polars import set_float_fmt as _set_float_fmt
-    from polars.polars import set_float_precision as _set_float_precision
+from polars.dependencies import json
 
+
+# dummy funcs required (so docs build)
+def _get_float_fmt() -> str:
+    return "n/a"
+
+def _set_float_precision() -> str:
+    return "n/a"
+
+
+# note: module not available when building docs
+with contextlib.suppress(ImportError):
+    from polars.polars import get_float_fmt as _get_float_fmt  # type: ignore[no-redef]
+    from polars.polars import set_float_fmt as _set_float_fmt
+    from polars.polars import get_float_precision as _get_float_precision
+    from polars.polars import set_float_precision as _set_float_precision
 
 if TYPE_CHECKING:
     import sys
     from types import TracebackType
+
+    from polars.type_aliases import FloatFmt
 
     if sys.version_info >= (3, 8):
         from typing import Literal
     else:
         from typing_extensions import Literal
 
+
 # note: register all Config-specific environment variable names here; need to constrain
 # which 'POLARS_' environment variables are recognised, as there are other lower-level
 # and/or experimental settings that should not be saved or reset with the Config vars.
-POLARS_CFG_ENV_VARS = {
+_POLARS_CFG_ENV_VARS = {
+    "POLARS_ACTIVATE_DECIMAL",
     "POLARS_AUTO_STRUCTIFY",
     "POLARS_FMT_MAX_COLS",
     "POLARS_FMT_MAX_ROWS",
@@ -38,10 +54,16 @@ POLARS_CFG_ENV_VARS = {
     "POLARS_FMT_TABLE_HIDE_DATAFRAME_SHAPE_INFORMATION",
     "POLARS_FMT_TABLE_INLINE_COLUMN_DATA_TYPE",
     "POLARS_FMT_TABLE_ROUNDED_CORNERS",
+    "POLARS_STREAMING_CHUNK_SIZE",
     "POLARS_TABLE_WIDTH",
     "POLARS_VERBOSE",
-    "POLARS_ACTIVATE_DECIMAL",
-    "POLARS_STREAMING_CHUNK_SIZE",
+}
+
+# vars that set the rust env directly should declare themselves here as the Config
+# method name paired with a callable that returns the current state of that value:
+_POLARS_CFG_DIRECT_VARS = {
+    "set_fmt_float": _get_float_fmt,
+    "set_float_precision": _get_float_precision,
 }
 
 
@@ -89,9 +111,9 @@ class Config:
         """
         options = json.loads(cfg)
         os.environ.update(options.get("environment", {}))
-        for flag, value in options.get("local", {}).items():
-            if hasattr(cls, flag):
-                setattr(cls, flag, value)
+        for cfg_methodname, value in options.get("direct", {}).items():
+            if hasattr(cls, cfg_methodname):
+                getattr(cls, cfg_methodname)(value)
         return cls
 
     @classmethod
@@ -109,7 +131,7 @@ class Config:
         >>> cfg = pl.Config.restore_defaults()  # doctest: +SKIP
 
         """
-        for var in POLARS_CFG_ENV_VARS:
+        for var in _POLARS_CFG_ENV_VARS:
             os.environ.pop(var, None)
         cls.set_fmt_float()
         return cls
@@ -126,27 +148,35 @@ class Config:
         """
         environment_vars = {
             key: os.environ[key]
-            for key in sorted(POLARS_CFG_ENV_VARS)
+            for key in sorted(_POLARS_CFG_ENV_VARS)
             if (key in os.environ)
         }
-        # note: 'local' vars are unused; preserved here for
-        # backwards-compatibility with previously-saved configs
+        direct_vars = {
+            cfg_methodname: get_value()
+            for cfg_methodname, get_value in _POLARS_CFG_DIRECT_VARS.items()
+        }
         return json.dumps(
-            {"environment": environment_vars, "local": {}},
+            {"environment": environment_vars, "direct": direct_vars},
             separators=(",", ":"),
         )
 
     @classmethod
-    def state(cls, if_set: bool = False) -> dict[str, str | None]:
+    def state(
+        cls, if_set: bool = False, env_only: bool = False
+    ) -> dict[str, str | None]:
         """
-        Show the current state of all Config environment variables as a dict.
+        Show the current state of all Config variables as a dict.
 
         Parameters
         ----------
         if_set : bool
             by default this will show the state of all ``Config`` environment variables.
             change this to ``True`` to restrict the returned dictionary to include only
-            those that _have_ been set to a specific value.
+            those that have been set to a specific value.
+
+        env_only : bool
+            include only Config environment variables in the output; some options (such
+            as "set_fmt_float") are set directly, not via an environment variable.
 
         Examples
         --------
@@ -154,16 +184,36 @@ class Config:
         >>> all_state = pl.Config.state()
 
         """
-        return {
+        config_state = {
             var: os.environ.get(var)
-            for var in sorted(POLARS_CFG_ENV_VARS)
+            for var in sorted(_POLARS_CFG_ENV_VARS)
             if not if_set or (os.environ.get(var) is not None)
         }
+        if not env_only:
+            for cfg_methodname, get_value in _POLARS_CFG_DIRECT_VARS.items():
+                config_state[cfg_methodname] = get_value()
+
+        return config_state
+
+    @classmethod
+    def activate_decimals(cls) -> type[Config]:
+        """
+        Activate ``Decimal`` data types.
+
+        This is temporary setting that will be removed later once
+        ``Decimal`` type stabilizes. This happens without it being
+        considered a breaking change.
+
+        Currently, ``Decimal`` types are in alpha stage.
+
+        """
+        os.environ["POLARS_ACTIVATE_DECIMAL"] = "1"
+        return cls
 
     @classmethod
     def set_ascii_tables(cls, active: bool = True) -> type[Config]:
         """
-        Use ASCII characters to print table outlines (set False to revert to UTF8).
+        Use ASCII characters to display table outlines (set False to revert to UTF8).
 
         Examples
         --------
@@ -193,17 +243,51 @@ class Config:
         return cls
 
     @classmethod
+    def set_fmt_float(cls, fmt: FloatFmt = "mixed") -> type[Config]:
+        """
+        Control how floating  point values are displayed.
+
+        Parameters
+        ----------
+        fmt : {"mixed", "full"}
+            How to format floating point numbers
+
+        """
+        _set_float_fmt(fmt)
+        return cls
+
+    @classmethod
     def set_fmt_str_lengths(cls, n: int) -> type[Config]:
         """
-        Set the number of characters used to print string values.
+        Set the number of characters used to display string values.
 
         Parameters
         ----------
         n : int
-            number of characters to print
+            number of characters to display
 
         """
         os.environ["POLARS_FMT_STR_LEN"] = str(n)
+        return cls
+
+    @classmethod
+    def set_streaming_chunk_size(cls, size: int) -> type[Config]:
+        """
+        Overwrite chunk size used in ``streaming`` engine.
+
+        By default, the chunk size is determined by the schema
+        and size of the thread pool. For some datasets (esp.
+        when you have large string elements) this can be too
+        optimistic and lead to Out of Memory errors.
+
+        Parameters
+        ----------
+        size
+            Number of rows per chunk. Every thread will process chunks
+            of this size.
+
+        """
+        os.environ["POLARS_STREAMING_CHUNK_SIZE"] = str(size)
         return cls
 
     @classmethod
@@ -289,12 +373,12 @@ class Config:
     @classmethod
     def set_tbl_cols(cls, n: int) -> type[Config]:
         """
-        Set the number of columns used to print tables.
+        Set the number of columns that are visible when displaying tables.
 
         Parameters
         ----------
         n : int
-            number of columns to print. If n<0 print all the columns.
+            number of columns to display; if ``n < 0`` (eg: -1), display all columns.
 
         Examples
         --------
@@ -557,8 +641,8 @@ class Config:
         Parameters
         ----------
         n : int
-            number of rows to print; if n < 0, prints all rows (DataFrame) and
-            all elements (Series).
+            number of rows to display; if ``n < 0`` (eg: -1), display all
+            rows (DataFrame) and all elements (Series).
 
         Examples
         --------
@@ -574,7 +658,7 @@ class Config:
         # │ f64 ┆ bool  │
         # ╞═════╪═══════╡
         # │ 1.0 ┆ true  │
-        # │ ... ┆ ...   │
+        # │ …   ┆ …     │
         # │ 5.0 ┆ false │
         # └─────┴───────┘
 
@@ -603,20 +687,6 @@ class Config:
         return cls
 
     @classmethod
-    def set_fmt_float(cls, fmt: str = "mixed") -> type[Config]:
-        """
-        Control how floating  point values are displayed.
-
-        Parameters
-        ----------
-        fmt : {"mixed", "full"}
-            How to format floating point numbers
-
-        """
-        _set_float_fmt(fmt)
-        return cls
-
-    @classmethod
     def set_float_precision(cls, precision: int = 255) -> type[Config]:
         """
         Control how floating point values are displayed.
@@ -628,39 +698,4 @@ class Config:
 
         """
         _set_float_precision(precision)
-        return cls
-
-    @classmethod
-    def activate_decimals(cls) -> type[Config]:
-        """
-        Activate ``Decimal`` data types.
-
-        This is temporary setting that will be removed later once
-        ``Decimal`` type stabilizes. This happens without it being
-        considered a breaking change.
-
-        Currently, ``Decimal`` types are in alpha stage.
-
-        """
-        os.environ["POLARS_ACTIVATE_DECIMAL"] = "1"
-        return cls
-
-    @classmethod
-    def set_streaming_chunk_size(cls, size: int) -> type[Config]:
-        """
-        Overwrite chunk size used in ``streaming`` engine.
-
-        By default, the chunk size is determined by the schema
-        and size of the thread pool. For some datasets (esp.
-        when you have large string elements) this can be too
-        optimistic and lead to Out of Memory errors.
-
-        Parameters
-        ----------
-        size
-            Number of rows per chunk. Every thread will process chunks
-            of this size.
-
-        """
-        os.environ["POLARS_STREAMING_CHUNK_SIZE"] = str(size)
         return cls

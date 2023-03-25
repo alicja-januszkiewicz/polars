@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from functools import reduce
 from operator import or_
-from typing import Callable, TypeVar
+from typing import TYPE_CHECKING, Callable, TypeVar
 from warnings import warn
 
-from polars.internals import DataFrame, Expr, LazyFrame, Series
+from polars import internals as pli
+
+if TYPE_CHECKING:
+    from polars.dataframe import DataFrame
+    from polars.expr import Expr
+    from polars.lazyframe import LazyFrame
+    from polars.series import Series
 
 __all__ = [
     "register_expr_namespace",
@@ -19,7 +25,7 @@ _reserved_namespaces: set[str] = reduce(
     or_,
     (
         cls._accessors  # type: ignore[attr-defined]
-        for cls in (DataFrame, Expr, LazyFrame, Series)
+        for cls in (pli.DataFrame, pli.Expr, pli.LazyFrame, pli.Series)
     ),
 )
 
@@ -50,11 +56,12 @@ def _create_namespace(
 
     def namespace(ns_class: type[NS]) -> type[NS]:
         if name in _reserved_namespaces:
-            raise AttributeError(f"Cannot override reserved namespace ({name!r})")
+            raise AttributeError(f"Cannot override reserved namespace {name!r}")
         elif hasattr(cls, name):
             warn(
                 f"Overriding existing custom namespace {name!r} (on {cls.__name__})",
                 UserWarning,
+                stacklevel=2,
             )
 
         setattr(cls, name, NameSpace(name, ns_class))
@@ -118,7 +125,7 @@ def register_expr_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
     register_series_namespace: Register functionality on a Series.
 
     """
-    return _create_namespace(name, Expr)
+    return _create_namespace(name, pli.Expr)
 
 
 def register_dataframe_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
@@ -218,7 +225,7 @@ def register_dataframe_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
     register_series_namespace: Register functionality on a Series.
 
     """
-    return _create_namespace(name, DataFrame)
+    return _create_namespace(name, pli.DataFrame)
 
 
 def register_lazyframe_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
@@ -323,7 +330,7 @@ def register_lazyframe_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
     register_series_namespace: Register functionality on a Series.
 
     """
-    return _create_namespace(name, LazyFrame)
+    return _create_namespace(name, pli.LazyFrame)
 
 
 def register_series_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
@@ -378,4 +385,4 @@ def register_series_namespace(name: str) -> Callable[[type[NS]], type[NS]]:
     register_lazyframe_namespace: Register functionality on a LazyFrame.
 
     """
-    return _create_namespace(name, Series)
+    return _create_namespace(name, pli.Series)

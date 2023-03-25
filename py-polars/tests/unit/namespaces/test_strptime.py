@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import polars as pl
-from polars.exceptions import ComputeError
+from polars.exceptions import ArrowError, ComputeError
 from polars.testing import assert_series_equal
 
 if sys.version_info >= (3, 9):
@@ -23,8 +23,7 @@ else:
     from backports.zoneinfo._zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
-    from polars.datatypes import PolarsTemporalType
-    from polars.internals.type_aliases import TimeUnit
+    from polars.type_aliases import PolarsTemporalType, TimeUnit
 
 
 def test_str_strptime() -> None:
@@ -323,6 +322,19 @@ def test_replace_timezone_invalid_timezone() -> None:
     )
     with pytest.raises(ComputeError, match=r"unable to parse time zone: foo"):
         ts.dt.replace_time_zone("foo")
+
+
+def test_replace_time_zone_ambiguous_or_non_existent() -> None:
+    with pytest.raises(
+        ArrowError,
+        match="datetime '2021-11-07 01:00:00' is ambiguous in time zone 'US/Central'",
+    ):
+        pl.Series(["2021-11-07 01:00"]).str.strptime(pl.Datetime("us", "US/Central"))
+    with pytest.raises(
+        ArrowError,
+        match="datetime '2021-03-28 02:30:00' is non-existent in time zone 'Europe/Warsaw'",
+    ):
+        pl.Series(["2021-03-28 02:30"]).str.strptime(pl.Datetime("us", "Europe/Warsaw"))
 
 
 @pytest.mark.parametrize(

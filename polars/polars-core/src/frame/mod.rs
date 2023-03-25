@@ -26,17 +26,16 @@ pub mod groupby;
 pub mod hash_join;
 #[cfg(feature = "rows")]
 pub mod row;
+mod top_k;
 mod upstream_traits;
+
 pub use chunks::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use smartstring::alias::String as SmartString;
 
 use crate::frame::groupby::GroupsIndicator;
-#[cfg(feature = "sort_multiple")]
-use crate::prelude::sort::argsort_multiple_row_fmt;
-#[cfg(feature = "sort_multiple")]
-use crate::prelude::sort::prepare_arg_sort;
+use crate::prelude::sort::{argsort_multiple_row_fmt, prepare_arg_sort};
 use crate::series::IsSorted;
 #[cfg(feature = "row_hash")]
 use crate::vector_hasher::df_rows_to_hashes_threaded;
@@ -58,6 +57,9 @@ pub enum UniqueKeepStrategy {
     Last,
     /// Keep None of the unique rows.
     None,
+    /// Keep any of the unique rows
+    /// This allows more optimizations
+    Any,
 }
 
 /// A contiguous growable collection of `Series` that have the same length.
@@ -447,13 +449,13 @@ impl DataFrame {
 
     /// Returns true if the chunks of the columns do not align and re-chunking should be done
     pub fn should_rechunk(&self) -> bool {
-        let mut chunk_lenghts = self.columns.iter().map(|s| s.chunk_lengths());
-        match chunk_lenghts.next() {
+        let mut chunk_lengths = self.columns.iter().map(|s| s.chunk_lengths());
+        match chunk_lengths.next() {
             None => false,
             Some(first_column_chunk_lengths) => {
                 // Fast Path for single Chunk Series
                 if first_column_chunk_lengths.len() == 1 {
-                    return chunk_lenghts.any(|cl| cl.len() != 1);
+                    return chunk_lengths.any(|cl| cl.len() != 1);
                 }
                 // Always rechunk if we have more chunks than rows.
                 // except when we have an empty df containing a single chunk
@@ -464,7 +466,7 @@ impl DataFrame {
                 }
                 // Slow Path for multi Chunk series
                 let v: Vec<_> = first_column_chunk_lengths.collect();
-                for cl in chunk_lenghts {
+                for cl in chunk_lengths {
                     if cl.enumerate().any(|(idx, el)| Some(&el) != v.get(idx)) {
                         return true;
                     }
@@ -1795,6 +1797,11 @@ impl DataFrame {
         if self.height() == 0 {
             return Ok(self.clone());
         }
+
+        if let Some((0, k)) = slice {
+            return self.top_k_impl(k, descending, by_column, nulls_last);
+        }
+
         // a lot of indirection in both sorting and take
         let mut df = self.clone();
         let df = df.as_single_chunk_par();
@@ -1827,19 +1834,11 @@ impl DataFrame {
                 s.arg_sort(options)
             }
             _ => {
-                #[cfg(feature = "sort_multiple")]
-                {
-                    if nulls_last || std::env::var("POLARS_ROW_FMT_SORT").is_ok() {
-                        argsort_multiple_row_fmt(&by_column, descending, nulls_last, parallel)?
-                    } else {
-                        let (first, by_column, descending) =
-                            prepare_arg_sort(by_column, descending)?;
-                        first.arg_sort_multiple(&by_column, &descending)?
-                    }
-                }
-                #[cfg(not(feature = "sort_multiple"))]
-                {
-                    panic!("activate `sort_multiple` feature gate to enable this functionality");
+                if nulls_last || std::env::var("POLARS_ROW_FMT_SORT").is_ok() {
+                    argsort_multiple_row_fmt(&by_column, descending, nulls_last, parallel)?
+                } else {
+                    let (first, by_column, descending) = prepare_arg_sort(by_column, descending)?;
+                    first.arg_sort_multiple(&by_column, &descending)?
                 }
             }
         };
@@ -3008,7 +3007,7 @@ impl DataFrame {
         };
 
         let columns = match (keep, maintain_order) {
-            (UniqueKeepStrategy::First, true) => {
+            (UniqueKeepStrategy::First | UniqueKeepStrategy::Any, true) => {
                 let gb = self.groupby_stable(names)?;
                 let groups = gb.get_groups();
                 let (offset, len) = slice.unwrap_or((0, groups.len()));
@@ -3037,7 +3036,7 @@ impl DataFrame {
                 let last_idx = last_idx.sort(false);
                 return Ok(unsafe { self.take_unchecked(&last_idx) });
             }
-            (UniqueKeepStrategy::First, false) => {
+            (UniqueKeepStrategy::First | UniqueKeepStrategy::Any, false) => {
                 let gb = self.groupby(names)?;
                 let groups = gb.get_groups();
                 let (offset, len) = slice.unwrap_or((0, groups.len()));

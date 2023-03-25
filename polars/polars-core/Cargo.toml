@@ -10,14 +10,14 @@ description = "Core of the Polars DataFrame library"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-simd = ["arrow/simd"]
+simd = ["arrow/simd", "polars-arrow/simd"]
 nightly = ["simd", "hashbrown/nightly", "polars-utils/nightly", "polars-arrow/nightly"]
 avx512 = []
 docs = []
 temporal = ["regex", "chrono", "polars-error/regex"]
 random = ["rand", "rand_distr"]
 default = ["docs", "temporal", "private"]
-lazy = ["sort_multiple"]
+lazy = []
 
 # ~40% faster collect, needed until trustedlength iter stabilizes
 # more fast paths, slower compilation
@@ -78,7 +78,6 @@ semi_anti_join = []
 chunked_ids = []
 describe = []
 timezones = ["chrono-tz", "arrow/chrono-tz", "polars-arrow/timezones"]
-
 dynamic_groupby = ["dtype-datetime", "dtype-date"]
 
 # opt-in datatypes for Series
@@ -105,7 +104,6 @@ serde-lazy = ["serde", "polars-arrow/serde", "indexmap/serde", "smartstring/serd
 docs-selection = [
   "ndarray",
   "is_in",
-  "sort_multiple",
   "rows",
   "docs",
   "strings",
@@ -156,6 +154,7 @@ bitflags.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["std"], optional = true }
 chrono-tz = { version = "0.8", optional = true }
 comfy-table = { version = "6.1.4", optional = true, default_features = false }
+either.workspace = true
 hashbrown.workspace = true
 indexmap = { version = "1", features = ["std"] }
 itoap = { version = "1", optional = true }

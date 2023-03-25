@@ -11,8 +11,7 @@ with contextlib.suppress(ImportError):  # Module not available when building doc
 
 
 if TYPE_CHECKING:
-    from polars.datatypes.type_aliases import PolarsDataType, PythonDataType, SchemaDict
-    from polars.internals.type_aliases import TimeUnit
+    from polars.type_aliases import PolarsDataType, PythonDataType, SchemaDict, TimeUnit
 
 
 class DataTypeClass(type):
@@ -212,6 +211,11 @@ class Datetime(TemporalType):
         self.tu = time_unit or "us"
         self.tz = time_zone
 
+        if self.tu not in ("ms", "us", "ns"):
+            raise ValueError(
+                f"Invalid time_unit; expected one of {{'ns','us','ms'}}, got {self.tu!r}"
+            )
+
     def __eq__(self, other: PolarsDataType) -> bool:  # type: ignore[override]
         # allow comparing object instances to class
         if type(other) is DataTypeClass and issubclass(other, Datetime):
@@ -226,7 +230,7 @@ class Datetime(TemporalType):
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
-        return f"{class_name}(tu={self.tu!r}, tz={self.tz!r})"
+        return f"{class_name}(time_unit={self.tu!r}, time_zone={self.tz!r})"
 
 
 class Duration(TemporalType):
@@ -245,6 +249,10 @@ class Duration(TemporalType):
 
         """
         self.tu = time_unit
+        if self.tu not in ("ms", "us", "ns"):
+            raise ValueError(
+                f"Invalid time_unit; expected one of {{'ns','us','ms'}}, got {self.tu!r}"
+            )
 
     def __eq__(self, other: PolarsDataType) -> bool:  # type: ignore[override]
         # allow comparing object instances to class
@@ -260,7 +268,7 @@ class Duration(TemporalType):
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
-        return f"{class_name}(tu={self.tu!r})"
+        return f"{class_name}(time_unit={self.tu!r})"
 
 
 class Categorical(DataType):

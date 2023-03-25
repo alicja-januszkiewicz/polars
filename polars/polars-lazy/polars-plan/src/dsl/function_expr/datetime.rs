@@ -1,3 +1,7 @@
+#[cfg(feature = "timezones")]
+use chrono_tz::Tz;
+#[cfg(feature = "timezones")]
+use polars_core::utils::arrow::temporal_conversions::parse_offset;
 use polars_core::utils::arrow::temporal_conversions::SECONDS_IN_DAY;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -8,6 +12,7 @@ use super::*;
 #[derive(Clone, PartialEq, Debug, Eq, Hash)]
 pub enum TemporalFunction {
     Year,
+    IsLeapYear,
     IsoYear,
     Quarter,
     Month,
@@ -15,6 +20,9 @@ pub enum TemporalFunction {
     WeekDay,
     Day,
     OrdinalDay,
+    Time,
+    Date,
+    Datetime,
     Hour,
     Minute,
     Second,
@@ -42,6 +50,7 @@ impl Display for TemporalFunction {
         use TemporalFunction::*;
         let s = match self {
             Year => "year",
+            IsLeapYear => "is_leap_year",
             IsoYear => "iso_year",
             Quarter => "quarter",
             Month => "month",
@@ -49,6 +58,9 @@ impl Display for TemporalFunction {
             WeekDay => "weekday",
             Day => "day",
             OrdinalDay => "ordinal_day",
+            Time => "time",
+            Date => "date",
+            Datetime => "datetime",
             Hour => "hour",
             Minute => "minute",
             Second => "second",
@@ -72,6 +84,9 @@ impl Display for TemporalFunction {
 pub(super) fn year(s: &Series) -> PolarsResult<Series> {
     s.year().map(|ca| ca.into_series())
 }
+pub(super) fn is_leap_year(s: &Series) -> PolarsResult<Series> {
+    s.is_leap_year().map(|ca| ca.into_series())
+}
 pub(super) fn iso_year(s: &Series) -> PolarsResult<Series> {
     s.iso_year().map(|ca| ca.into_series())
 }
@@ -92,6 +107,45 @@ pub(super) fn day(s: &Series) -> PolarsResult<Series> {
 }
 pub(super) fn ordinal_day(s: &Series) -> PolarsResult<Series> {
     s.ordinal_day().map(|ca| ca.into_series())
+}
+pub(super) fn time(s: &Series) -> PolarsResult<Series> {
+    match s.dtype() {
+        #[cfg(feature = "timezones")]
+        DataType::Datetime(_, Some(_)) => s
+            .datetime()
+            .unwrap()
+            .replace_time_zone(None)?
+            .cast(&DataType::Time),
+        DataType::Datetime(_, _) => s.datetime().unwrap().cast(&DataType::Time),
+        DataType::Date => s.datetime().unwrap().cast(&DataType::Time),
+        DataType::Time => Ok(s.clone()),
+        dtype => polars_bail!(ComputeError: "expected Datetime, Date, or Time, got {}", dtype),
+    }
+}
+pub(super) fn date(s: &Series) -> PolarsResult<Series> {
+    match s.dtype() {
+        #[cfg(feature = "timezones")]
+        DataType::Datetime(_, Some(_)) => s
+            .datetime()
+            .unwrap()
+            .replace_time_zone(None)?
+            .cast(&DataType::Date),
+        DataType::Datetime(_, _) => s.datetime().unwrap().cast(&DataType::Date),
+        DataType::Date => Ok(s.clone()),
+        dtype => polars_bail!(ComputeError: "expected Datetime or Date, got {}", dtype),
+    }
+}
+pub(super) fn datetime(s: &Series) -> PolarsResult<Series> {
+    match s.dtype() {
+        #[cfg(feature = "timezones")]
+        DataType::Datetime(tu, Some(_)) => s
+            .datetime()
+            .unwrap()
+            .replace_time_zone(None)?
+            .cast(&DataType::Datetime(*tu, None)),
+        DataType::Datetime(tu, _) => s.datetime().unwrap().cast(&DataType::Datetime(*tu, None)),
+        dtype => polars_bail!(ComputeError: "expected Datetime, got {}", dtype),
+    }
 }
 pub(super) fn hour(s: &Series) -> PolarsResult<Series> {
     s.hour().map(|ca| ca.into_series())
@@ -119,8 +173,34 @@ pub(super) fn truncate(s: &Series, every: &str, offset: &str) -> PolarsResult<Se
     let every = Duration::parse(every);
     let offset = Duration::parse(offset);
     Ok(match s.dtype() {
-        DataType::Datetime(_, _) => s.datetime().unwrap().truncate(every, offset).into_series(),
-        DataType::Date => s.date().unwrap().truncate(every, offset).into_series(),
+        DataType::Datetime(_, tz) => match tz {
+            #[cfg(feature = "timezones")]
+            Some(tz) => match tz.parse::<Tz>() {
+                Ok(tz) => s
+                    .datetime()
+                    .unwrap()
+                    .truncate(every, offset, Some(&tz))?
+                    .into_series(),
+                Err(_) => match parse_offset(tz) {
+                    Ok(tz) => s
+                        .datetime()
+                        .unwrap()
+                        .truncate(every, offset, Some(&tz))?
+                        .into_series(),
+                    Err(_) => unreachable!(),
+                },
+            },
+            _ => s
+                .datetime()
+                .unwrap()
+                .truncate(every, offset, NO_TIMEZONE)?
+                .into_series(),
+        },
+        DataType::Date => s
+            .date()
+            .unwrap()
+            .truncate(every, offset, NO_TIMEZONE)?
+            .into_series(),
         dt => polars_bail!(opq = round, got = dt, expected = "date/datetime"),
     })
 }
@@ -129,8 +209,34 @@ pub(super) fn round(s: &Series, every: &str, offset: &str) -> PolarsResult<Serie
     let every = Duration::parse(every);
     let offset = Duration::parse(offset);
     Ok(match s.dtype() {
-        DataType::Datetime(_, _) => s.datetime().unwrap().round(every, offset).into_series(),
-        DataType::Date => s.date().unwrap().round(every, offset).into_series(),
+        DataType::Datetime(_, tz) => match tz {
+            #[cfg(feature = "timezones")]
+            Some(tz) => match tz.parse::<Tz>() {
+                Ok(tz) => s
+                    .datetime()
+                    .unwrap()
+                    .round(every, offset, Some(&tz))?
+                    .into_series(),
+                Err(_) => match parse_offset(tz) {
+                    Ok(tz) => s
+                        .datetime()
+                        .unwrap()
+                        .round(every, offset, Some(&tz))?
+                        .into_series(),
+                    Err(_) => unreachable!(),
+                },
+            },
+            _ => s
+                .datetime()
+                .unwrap()
+                .round(every, offset, NO_TIMEZONE)?
+                .into_series(),
+        },
+        DataType::Date => s
+            .date()
+            .unwrap()
+            .round(every, offset, NO_TIMEZONE)?
+            .into_series(),
         dt => polars_bail!(opq = round, got = dt, expected = "date/datetime"),
     })
 }

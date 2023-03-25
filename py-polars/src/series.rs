@@ -1,4 +1,5 @@
 use numpy::PyArray1;
+use polars_algo::{cut, hist, qcut};
 use polars_core::prelude::QuantileInterpolOptions;
 use polars_core::series::IsSorted;
 use polars_core::utils::{flatten_series, CustomIterTools};
@@ -397,7 +398,7 @@ impl PySeries {
             if val == v_trunc {
                 val
             } else {
-                format!("{v_trunc}...")
+                format!("{v_trunc}…")
             }
         } else {
             val
@@ -1215,6 +1216,62 @@ impl PySeries {
 
     pub fn clear(&self) -> Self {
         self.series.clear().into()
+    }
+
+    #[pyo3(signature = (bins, labels, break_point_label, category_label, maintain_order))]
+    pub fn cut(
+        &self,
+        bins: Self,
+        labels: Option<Vec<&str>>,
+        break_point_label: Option<&str>,
+        category_label: Option<&str>,
+        maintain_order: bool,
+    ) -> PyResult<PyDataFrame> {
+        let out = cut(
+            &self.series,
+            bins.series,
+            labels,
+            break_point_label,
+            category_label,
+            maintain_order,
+        )
+        .map_err(PyPolarsErr::from)?;
+        Ok(out.into())
+    }
+
+    #[pyo3(signature = (quantiles, labels, break_point_label, category_label, maintain_order))]
+    pub fn qcut(
+        &self,
+        quantiles: Self,
+        labels: Option<Vec<&str>>,
+        break_point_label: Option<&str>,
+        category_label: Option<&str>,
+        maintain_order: bool,
+    ) -> PyResult<PyDataFrame> {
+        if quantiles.series.null_count() > 0 {
+            return Err(PyValueError::new_err(
+                "did not expect null values in list of quantiles",
+            ));
+        }
+        let quantiles = quantiles.series.cast(&DataType::Float64).unwrap();
+        let quantiles = quantiles.f64().unwrap().rechunk();
+
+        let out = qcut(
+            &self.series,
+            quantiles.cont_slice().unwrap(),
+            labels,
+            break_point_label,
+            category_label,
+            maintain_order,
+        )
+        .map_err(PyPolarsErr::from)?;
+        Ok(out.into())
+    }
+
+    pub fn hist(&self, bins: Option<Self>, bin_count: Option<usize>) -> PyResult<PyDataFrame> {
+        let bins = bins.map(|s| s.series);
+        let out = hist(&self.series, bins.as_ref(), bin_count).map_err(PyPolarsErr::from)?;
+        Ok(out.into())
     }
 }
 

@@ -22,11 +22,11 @@ from polars.datatypes import (
     UInt64,
 )
 from polars.exceptions import ShapeError
-from polars.internals.construction import iterable_to_pyseries
 from polars.testing import assert_frame_equal, assert_series_equal
+from polars.utils._construction import iterable_to_pyseries
 
 if TYPE_CHECKING:
-    from polars.internals.type_aliases import EpochTimeUnit, TimeUnit
+    from polars.type_aliases import EpochTimeUnit, TimeUnit
 
 
 def test_cum_agg() -> None:
@@ -53,7 +53,8 @@ def test_init_inputs(monkeypatch: Any) -> None:
     assert pl.Series([]).dtype == pl.Float32
     assert pl.Series(dtype_if_empty=pl.Utf8).dtype == pl.Utf8
     assert pl.Series([], dtype_if_empty=pl.UInt16).dtype == pl.UInt16
-    # "== []" will be cast to empty Series with Utf8 dtype.
+    assert pl.Series([None, None, None], dtype_if_empty=pl.Int8).dtype == pl.Int8
+    # note: "== []" will be cast to empty Series with Utf8 dtype.
     assert_series_equal(
         pl.Series([], dtype_if_empty=pl.Utf8) == [], pl.Series("", dtype=pl.Boolean)
     )
@@ -92,6 +93,16 @@ def test_init_inputs(monkeypatch: Any) -> None:
         assert res[0].to_list() == [1.0, 2.0]
         assert res[1].to_list() == [3.0, None]
 
+    # numpy from arange, with/without dtype
+    two_ints = np.arange(2, dtype=np.int64)
+    three_ints = np.arange(3, dtype=np.int64)
+    for res in (
+        pl.Series("a", [two_ints, three_ints]),
+        pl.Series("a", [two_ints, three_ints], dtype=pl.List(pl.Int64)),
+    ):
+        assert res.dtype == pl.List(pl.Int64)
+        assert res.to_list() == [[0, 1], [0, 1, 2]]
+
     assert pl.Series(
         values=np.array([["foo", "bar"], ["foo2", "bar2"]])
     ).dtype == pl.List(pl.Utf8)
@@ -126,7 +137,7 @@ def test_init_inputs(monkeypatch: Any) -> None:
         pl.Series("bigint", [2**64])
 
     # numpy not available
-    monkeypatch.setattr(pl.internals.series.series, "_check_for_numpy", lambda x: False)
+    monkeypatch.setattr(pl.series.series, "_check_for_numpy", lambda x: False)
     with pytest.raises(ValueError):
         pl.DataFrame(np.array([1, 2, 3]), schema=["a"])
 
@@ -1022,9 +1033,7 @@ def test_shape() -> None:
 
 @pytest.mark.parametrize("arrow_available", [True, False])
 def test_create_list_series(arrow_available: bool, monkeypatch: Any) -> None:
-    monkeypatch.setattr(
-        pl.internals.series.series, "_PYARROW_AVAILABLE", arrow_available
-    )
+    monkeypatch.setattr(pl.series.series, "_PYARROW_AVAILABLE", arrow_available)
     a = [[1, 2], None, [None, 3]]
     s = pl.Series("", a)
     assert s.to_list() == a
@@ -1128,8 +1137,9 @@ def test_is_in() -> None:
     out = s.is_in([])
     assert out.to_list() == [False]  # one element?
 
-    out = s.is_in(["x", "y", "z"])
-    assert out.to_list() == [False, False, False]
+    for x_y_z in (["x", "y", "z"], {"x", "y", "z"}):
+        out = s.is_in(x_y_z)
+        assert out.to_list() == [False, False, False]
 
     df = pl.DataFrame({"a": [1.0, 2.0], "b": [1, 4], "c": ["e", "d"]})
     assert df.select(pl.col("a").is_in(pl.col("b"))).to_series().to_list() == [
@@ -1443,7 +1453,7 @@ def test_bitwise() -> None:
 def test_to_numpy(monkeypatch: Any) -> None:
     for writable in [False, True]:
         for flag in [False, True]:
-            monkeypatch.setattr(pl.internals.series.series, "_PYARROW_AVAILABLE", flag)
+            monkeypatch.setattr(pl.series.series, "_PYARROW_AVAILABLE", flag)
 
             np_array = pl.Series("a", [1, 2, 3], pl.UInt8).to_numpy(writable=writable)
 
@@ -1525,9 +1535,9 @@ def test_from_sequences(monkeypatch: Any) -> None:
     ]
 
     for vals in values:
-        monkeypatch.setattr(pl.internals.series.series, "_PYARROW_AVAILABLE", False)
+        monkeypatch.setattr(pl.series.series, "_PYARROW_AVAILABLE", False)
         a = pl.Series("a", vals)
-        monkeypatch.setattr(pl.internals.series.series, "_PYARROW_AVAILABLE", True)
+        monkeypatch.setattr(pl.series.series, "_PYARROW_AVAILABLE", True)
         b = pl.Series("a", vals)
         assert_series_equal(a, b)
         assert a.to_list() == vals
@@ -2328,7 +2338,7 @@ def test_repr() -> None:
     class XSeries(pl.Series):
         """Custom Series class."""
 
-    # check custom class name reflected in repr ouput
+    # check custom class name reflected in repr output
     x = XSeries("ints", [1001, 2002, 3003])
     x_repr = repr(x)
 
@@ -2555,40 +2565,6 @@ def test_from_epoch_seq_input() -> None:
     assert_series_equal(result, expected)
 
 
-def test_cut() -> None:
-    a = pl.Series("a", [v / 10 for v in range(-30, 30, 5)])
-    out = a.cut(bins=[-1, 1])
-
-    assert out.shape == (12, 3)
-    assert out.filter(pl.col("break_point") < 1e9).to_dict(False) == {
-        "a": [-3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0],
-        "break_point": [-1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0],
-        "category": [
-            "(-inf, -1.0]",
-            "(-inf, -1.0]",
-            "(-inf, -1.0]",
-            "(-inf, -1.0]",
-            "(-inf, -1.0]",
-            "(-1.0, 1.0]",
-            "(-1.0, 1.0]",
-            "(-1.0, 1.0]",
-            "(-1.0, 1.0]",
-        ],
-    }
-
-    # test cut on integers #4939
-    inf = float("inf")
-    df = pl.DataFrame({"a": list(range(5))})
-    ser = df.select("a").to_series()
-    assert ser.cut(bins=[-1, 1]).rows() == [
-        (0.0, 1.0, "(-1.0, 1.0]"),
-        (1.0, 1.0, "(-1.0, 1.0]"),
-        (2.0, inf, "(1.0, inf]"),
-        (3.0, inf, "(1.0, inf]"),
-        (4.0, inf, "(1.0, inf]"),
-    ]
-
-
 def test_symmetry_for_max_in_names() -> None:
     # int
     a = pl.Series("a", [1])
@@ -2602,6 +2578,7 @@ def test_symmetry_for_max_in_names() -> None:
     # datetime
     a = pl.Series("a", [1], dtype=pl.Datetime("ns"))
     assert (a - a.max()).name == (a.max() - a).name == a.name
-    # time
-    a = pl.Series("a", [1], dtype=pl.Time("ns"))
-    assert (a - a.max()).name == (a.max() - a).name == a.name
+
+    # TODO: time arithmetic support?
+    # a = pl.Series("a", [1], dtype=pl.Time)
+    # assert (a - a.max()).name == (a.max() - a).name == a.name

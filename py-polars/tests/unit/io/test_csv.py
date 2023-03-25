@@ -24,7 +24,7 @@ from polars.testing import (
 from polars.utils.various import normalise_filepath
 
 if TYPE_CHECKING:
-    from polars.internals.type_aliases import TimeUnit
+    from polars.type_aliases import TimeUnit
 
 
 @pytest.fixture()
@@ -670,6 +670,13 @@ def test_csv_schema_offset(foods_file_path: Path) -> None:
     assert df.dtypes == [pl.Utf8, pl.Int64, pl.Float64, pl.Int64]
 
     df = pl.scan_csv(foods_file_path, skip_rows_after_header=24).collect()
+    assert df.columns == ["category", "calories", "fats_g", "sugars_g"]
+    assert df.shape == (3, 4)
+    assert df.dtypes == [pl.Utf8, pl.Int64, pl.Int64, pl.Int64]
+
+    df = pl.scan_csv(
+        foods_file_path, skip_rows_after_header=24, infer_schema_length=1
+    ).collect()
     assert df.columns == ["category", "calories", "fats_g", "sugars_g"]
     assert df.shape == (3, 4)
     assert df.dtypes == [pl.Utf8, pl.Int64, pl.Int64, pl.Int64]

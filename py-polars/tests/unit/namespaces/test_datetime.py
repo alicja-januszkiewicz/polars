@@ -7,10 +7,11 @@ import pytest
 
 import polars as pl
 from polars.datatypes import DTYPE_TEMPORAL_UNITS
+from polars.exceptions import ComputeError
 from polars.testing import assert_series_equal
 
 if TYPE_CHECKING:
-    from polars.internals.type_aliases import TimeUnit
+    from polars.type_aliases import TimeUnit
 
 
 @pytest.fixture()
@@ -68,6 +69,51 @@ def test_strptime_extract_times(
     s = series_of_str_dates.str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S.%9f")
 
     assert_series_equal(getattr(s.dt, unit_attr)(), expected)
+
+
+@pytest.mark.parametrize("time_zone", [None, "Asia/Kathmandu", "+03:00"])
+@pytest.mark.parametrize(
+    ("attribute", "expected"),
+    [
+        ("date", date(2022, 1, 1)),
+        ("time", time(23)),
+    ],
+)
+def test_dt_date_and_time(
+    attribute: str, time_zone: None | str, expected: date | time
+) -> None:
+    ser = pl.Series([datetime(2022, 1, 1, 23)]).dt.replace_time_zone(time_zone)
+    result = getattr(ser.dt, attribute)().item()
+    assert result == expected
+
+
+@pytest.mark.parametrize("time_zone", [None, "Asia/Kathmandu", "+03:00"])
+@pytest.mark.parametrize("time_unit", ["us", "ns", "ms"])
+def test_dt_datetime(time_zone: str | None, time_unit: TimeUnit) -> None:
+    ser = (
+        pl.Series([datetime(2022, 1, 1, 23)])
+        .dt.cast_time_unit(time_unit)
+        .dt.replace_time_zone(time_zone)
+    )
+    result = ser.dt.datetime()
+    expected = datetime(2022, 1, 1, 23)
+    assert result.dtype == pl.Datetime(time_unit, None)
+    assert result.item() == expected
+
+
+def test_dt_datetime_date_time_invalid() -> None:
+    with pytest.raises(ComputeError, match="expected Datetime"):
+        pl.Series([date(2021, 1, 2)]).dt.datetime()
+    with pytest.raises(ComputeError, match="expected Datetime or Date"):
+        pl.Series([time(23)]).dt.date()
+    with pytest.raises(ComputeError, match="expected Datetime"):
+        pl.Series([time(23)]).dt.datetime()
+    with pytest.raises(ComputeError, match="expected Datetime or Date"):
+        pl.Series([timedelta(1)]).dt.date()
+    with pytest.raises(ComputeError, match="expected Datetime"):
+        pl.Series([timedelta(1)]).dt.datetime()
+    with pytest.raises(ComputeError, match="expected Datetime, Date, or Time"):
+        pl.Series([timedelta(1)]).dt.time()
 
 
 @pytest.mark.parametrize(
@@ -273,6 +319,28 @@ def test_date_time_combine() -> None:
     assert df.schema == expected_schema
 
 
+def test_is_leap_year() -> None:
+    assert pl.date_range(
+        datetime(1990, 1, 1), datetime(2004, 1, 1), "1y"
+    ).dt.is_leap_year().to_list() == [
+        False,
+        False,
+        True,  # 1992
+        False,
+        False,
+        False,
+        True,  # 1996
+        False,
+        False,
+        False,
+        True,  # 2000
+        False,
+        False,
+        False,
+        True,  # 2004
+    ]
+
+
 def test_quarter() -> None:
     assert pl.date_range(
         datetime(2022, 1, 1), datetime(2022, 12, 1), "1mo"
@@ -299,6 +367,14 @@ def test_date_offset() -> None:
     # Assert that the 'date_min' column contains the expected list of dates
     expected_dates = [datetime(year, 11, 1, 0, 0) for year in range(1998, 2019)]
     assert df["date_min"].to_list() == expected_dates
+
+
+@pytest.mark.parametrize("time_zone", ["US/Central", None])
+def test_offset_by_crossing_dst(time_zone: str | None) -> None:
+    ser = pl.Series([datetime(2021, 11, 7)]).dt.replace_time_zone(time_zone)
+    result = ser.dt.offset_by("1d")
+    expected = pl.Series([datetime(2021, 11, 8)]).dt.replace_time_zone(time_zone)
+    assert_series_equal(result, expected)
 
 
 def test_year_empty_df() -> None:

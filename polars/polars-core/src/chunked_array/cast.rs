@@ -179,7 +179,7 @@ unsafe fn binary_to_utf8_unchecked(from: &BinaryArray<i64>) -> Utf8Array<i64> {
 
 impl BinaryChunked {
     /// # Safety
-    /// Utf8 is nto validated
+    /// Utf8 is not validated
     pub unsafe fn to_utf8(&self) -> Utf8Chunked {
         let chunks = self
             .downcast_iter()
@@ -280,6 +280,10 @@ impl ChunkCast for ListChunked {
                                 &List(Box::new(child_type)),
                             )
                         })
+                    }
+                    #[cfg(feature = "dtype-categorical")]
+                    (dt, Categorical(None)) => {
+                        polars_bail!(ComputeError: "cannot cast list inner type: '{:?}' to Categorical", dt)
                     }
                     _ if phys_child.is_primitive() => {
                         let mut ca = if child_type.to_physical() != self.inner_dtype().to_physical()

@@ -12,7 +12,7 @@ fn from_chunks_list_dtype(chunks: &mut Vec<ArrayRef>, dtype: DataType) -> DataTy
     match dtype {
         #[cfg(feature = "dtype-categorical")]
         // arrow dictionaries are not nested as dictionaries, but only by their keys, so we must
-        // change the list-value array to the keys and store the dicitonary values in the datatype.
+        // change the list-value array to the keys and store the dictionary values in the datatype.
         // if a global string cache is set, we also must modify the keys.
         DataType::List(inner) if *inner == DataType::Categorical(None) => {
             use polars_arrow::kernels::concatenate::concatenate_owned_unchecked;
@@ -105,14 +105,18 @@ where
     /// This will not be checked by the borrowchecker.
     pub unsafe fn mmap_slice(name: &str, values: &[T::Native]) -> Self {
         let arr = arrow::ffi::mmap::slice(values);
-        let arr = Box::new(arr);
-        let mut out = ChunkedArray {
-            field: Arc::new(Field::new(name, T::get_dtype())),
-            chunks: vec![arr],
-            phantom: PhantomData,
-            ..Default::default()
-        };
-        out.compute_len();
-        out
+        Self::from_chunks(name, vec![Box::new(arr)])
+    }
+}
+
+impl BooleanChunked {
+    /// Create a temporary [`ChunkedArray`] from a slice.
+    ///
+    /// # Safety
+    /// The lifetime will be bound to the lifetime of the slice.
+    /// This will not be checked by the borrowchecker.
+    pub unsafe fn mmap_slice(name: &str, values: &[u8], offset: usize, len: usize) -> Self {
+        let arr = arrow::ffi::mmap::bitmap(values, offset, len).unwrap();
+        BooleanChunked::from_chunks(name, vec![Box::new(arr)])
     }
 }

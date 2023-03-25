@@ -15,16 +15,16 @@ import pytest
 
 import polars as pl
 from polars.datatypes import DTYPE_TEMPORAL_UNITS, INTEGER_DTYPES
-from polars.internals.construction import iterable_to_pydf
 from polars.testing import (
     assert_frame_equal,
     assert_frame_not_equal,
     assert_series_equal,
 )
 from polars.testing.parametric import columns
+from polars.utils._construction import iterable_to_pydf
 
 if TYPE_CHECKING:
-    from polars.internals.type_aliases import JoinStrategy, UniqueKeepStrategy
+    from polars.type_aliases import JoinStrategy, UniqueKeepStrategy
 
 if sys.version_info >= (3, 9):
     from zoneinfo import ZoneInfo
@@ -1081,10 +1081,10 @@ def test_lazy_functions() -> None:
     assert np.isclose(pl.std(df["b"]), expected)  # type: ignore[arg-type]
     expected = 3
     assert np.isclose(out.to_series(2), expected)
-    assert np.isclose(pl.max(df["b"]), expected)
+    assert np.isclose(pl.max(df["b"]), expected)  # type: ignore[arg-type]
     expected = 1
     assert np.isclose(out.to_series(3), expected)
-    assert np.isclose(pl.min(df["b"]), expected)
+    assert np.isclose(pl.min(df["b"]), expected)  # type: ignore[arg-type]
     expected = 6
     assert np.isclose(out.to_series(4), expected)
     assert np.isclose(pl.sum(df["b"]), expected)
@@ -2422,14 +2422,14 @@ def test_getitem() -> None:
     # 5343
     df = pl.DataFrame(
         {
-            f"fo{col}": [n**col for n in range(5)]  # 5 rows
+            f"foo{col}": [n**col for n in range(5)]  # 5 rows
             for col in range(12)  # 12 columns
         }
     )
     assert df[4, 4] == 256
     assert df[4, 5] == 1024
-    assert_frame_equal(df[4, [2]], pl.DataFrame({"fo2": [16]}))
-    assert_frame_equal(df[4, [5]], pl.DataFrame({"fo5": [1024]}))
+    assert_frame_equal(df[4, [2]], pl.DataFrame({"foo2": [16]}))
+    assert_frame_equal(df[4, [5]], pl.DataFrame({"foo5": [1024]}))
 
 
 @pytest.mark.parametrize(

@@ -102,6 +102,12 @@ impl DateLikeNameSpace {
             .map_private(FunctionExpr::TemporalExpr(TemporalFunction::Year))
     }
 
+    // Compute whether the year of a Date/Datetime is a leap year.
+    pub fn is_leap_year(self) -> Expr {
+        self.0
+            .map_private(FunctionExpr::TemporalExpr(TemporalFunction::IsLeapYear))
+    }
+
     /// Get the iso-year of a Date/Datetime.
     /// This may not correspond with a calendar year.
     pub fn iso_year(self) -> Expr {
@@ -151,6 +157,24 @@ impl DateLikeNameSpace {
     pub fn ordinal_day(self) -> Expr {
         self.0
             .map_private(FunctionExpr::TemporalExpr(TemporalFunction::OrdinalDay))
+    }
+
+    /// Get the (local) time of a Date/Datetime/Time
+    pub fn time(self) -> Expr {
+        self.0
+            .map_private(FunctionExpr::TemporalExpr(TemporalFunction::Time))
+    }
+
+    /// Get the (local) date of a Date/Datetime
+    pub fn date(self) -> Expr {
+        self.0
+            .map_private(FunctionExpr::TemporalExpr(TemporalFunction::Date))
+    }
+
+    /// Get the (local) datetime of a Datetime
+    pub fn datetime(self) -> Expr {
+        self.0
+            .map_private(FunctionExpr::TemporalExpr(TemporalFunction::Datetime))
     }
 
     /// Get the hour of a Datetime/Time64

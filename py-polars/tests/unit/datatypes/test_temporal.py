@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import sys
 from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, cast, no_type_check
 
@@ -20,15 +19,11 @@ from polars.testing import (
 )
 
 if TYPE_CHECKING:
-    from polars.datatypes import PolarsTemporalType
-    from polars.internals.type_aliases import TimeUnit
-
-if sys.version_info >= (3, 9):
     from zoneinfo import ZoneInfo
+
+    from polars.type_aliases import PolarsTemporalType, TimeUnit
 else:
-    # Import from submodule due to typing issue with backports.zoneinfo package:
-    # https://github.com/pganssle/zoneinfo/issues/125
-    from backports.zoneinfo._zoneinfo import ZoneInfo
+    from polars.utils.convert import get_zoneinfo as ZoneInfo
 
 
 def test_fill_null() -> None:
@@ -356,6 +351,20 @@ def test_datetime_consistency() -> None:
         (test_data[1], 986754000),
         (test_data[2], 123456000),
         (test_data[3], 999999000),
+    ]
+    # Similar to above, but check for no error when crossing DST
+    test_data = [
+        datetime(2021, 11, 7, 0, 0, tzinfo=ZoneInfo("US/Central")),
+        datetime(2021, 11, 7, 1, 0, tzinfo=ZoneInfo("US/Central")),
+        datetime(2021, 11, 7, 1, 0, fold=1, tzinfo=ZoneInfo("US/Central")),
+        datetime(2021, 11, 7, 2, 0, tzinfo=ZoneInfo("US/Central")),
+    ]
+    ddf = pl.DataFrame({"dtm": test_data})
+    assert ddf.rows() == [
+        (test_data[0],),
+        (test_data[1],),
+        (test_data[2],),
+        (test_data[3],),
     ]
 
 
@@ -1038,6 +1047,60 @@ def test_default_negative_every_offset_dynamic_groupby(tzinfo: ZoneInfo | None) 
         }
     )
     assert_frame_equal(out, expected)
+
+
+@pytest.mark.parametrize(
+    ("rule", "offset"),
+    [
+        ("1h", timedelta(hours=2)),
+        ("1d", timedelta(days=2)),
+        ("1w", timedelta(weeks=2)),
+    ],
+)
+def test_groupby_dynamic_crossing_dst(rule: str, offset: timedelta) -> None:
+    start_dt = datetime(2021, 11, 7)
+    end_dt = start_dt + offset
+    date_range = pl.date_range(start_dt, end_dt, rule, time_zone="US/Central")
+    df = pl.DataFrame({"time": date_range, "value": range(len(date_range))})
+    result = df.groupby_dynamic("time", every=rule).agg(pl.col("value").mean())
+    expected = pl.DataFrame(
+        {"time": date_range, "value": range(len(date_range))},
+        schema_overrides={"value": pl.Float64},
+    )
+    assert_frame_equal(result, expected)
+
+
+def test_groupby_dynamic_startby_monday_crossing_dst() -> None:
+    start_dt = datetime(2021, 11, 7)
+    end_dt = datetime(2021, 11, 14)
+    date_range = pl.date_range(start_dt, end_dt, "1d", time_zone="US/Central")
+    df = pl.DataFrame({"time": date_range, "value": range(len(date_range))})
+    result = df.groupby_dynamic("time", every="1w", start_by="monday").agg(
+        pl.col("value").mean()
+    )
+    expected = pl.DataFrame(
+        {
+            "time": [
+                datetime(2021, 11, 1, tzinfo=ZoneInfo("US/Central")),
+                datetime(2021, 11, 8, tzinfo=ZoneInfo("US/Central")),
+            ],
+            "value": [0.0, 4.0],
+        },
+    )
+    assert_frame_equal(result, expected)
+
+
+def test_groupby_dynamic_monthly_crossing_dst() -> None:
+    start_dt = datetime(2021, 11, 1)
+    end_dt = datetime(2021, 12, 1)
+    date_range = pl.date_range(start_dt, end_dt, "1mo", time_zone="US/Central")
+    df = pl.DataFrame({"time": date_range, "value": range(len(date_range))})
+    result = df.groupby_dynamic("time", every="1mo").agg(pl.col("value").mean())
+    expected = pl.DataFrame(
+        {"time": date_range, "value": range(len(date_range))},
+        schema_overrides={"value": pl.Float64},
+    )
+    assert_frame_equal(result, expected)
 
 
 def test_asof_join_tolerance_grouper() -> None:
@@ -2053,7 +2116,8 @@ def test_tzaware_date_range_with_fixed_offset() -> None:
 
 def test_date_range_with_unsupported_datetimes() -> None:
     with pytest.raises(
-        ComputeError, match=r"ambiguous timestamps are not \(yet\) supported"
+        ComputeError,
+        match=r"datetime '2021-11-07 01:00:00' is ambiguous in time zone 'US/Central'",
     ):
         pl.date_range(
             datetime(2021, 11, 7, 1),
@@ -2062,7 +2126,8 @@ def test_date_range_with_unsupported_datetimes() -> None:
             time_zone="US/Central",
         )
     with pytest.raises(
-        ComputeError, match=r"non-existent timestamps are not \(yet\) supported"
+        ComputeError,
+        match=r"datetime '2021-03-28 02:30:00' is non-existent in time zone 'Europe/Vienna'",
     ):
         pl.date_range(
             datetime(2021, 3, 28, 2, 30),
@@ -2070,6 +2135,13 @@ def test_date_range_with_unsupported_datetimes() -> None:
             "1h",
             time_zone="Europe/Vienna",
         )
+
+
+def test_date_range_descending() -> None:
+    with pytest.raises(ComputeError, match="'start' cannot be greater than 'stop'"):
+        pl.date_range(datetime(2000, 3, 20), datetime(2000, 3, 5), interval="1h")
+    with pytest.raises(ComputeError, match="'interval' cannot be negative"):
+        pl.date_range(datetime(2000, 3, 20), datetime(2000, 3, 21), interval="-1h")
 
 
 def test_logical_nested_take() -> None:
@@ -2438,6 +2510,14 @@ def test_round_by_week() -> None:
         "7d": [date(1998, 4, 9), date(2022, 12, 1)],
         "1w": [date(1998, 4, 13), date(2022, 11, 28)],
     }
+
+
+@pytest.mark.parametrize("time_zone", [None, "Asia/Kathmandu", "+01:00"])
+def test_round_by_day_datetime(time_zone: str | None) -> None:
+    ser = pl.Series([datetime(2021, 11, 7, 3)]).dt.replace_time_zone(time_zone)
+    result = ser.dt.round("1d")
+    expected = pl.Series([datetime(2021, 11, 7)]).dt.replace_time_zone(time_zone)
+    assert_series_equal(result, expected)
 
 
 def test_cast_time_to_duration() -> None:

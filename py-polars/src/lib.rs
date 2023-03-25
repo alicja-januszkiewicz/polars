@@ -595,11 +595,25 @@ fn set_float_fmt(fmt: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
+fn get_float_fmt() -> PyResult<String> {
+    use polars_core::fmt::{get_float_fmt, FloatFmt};
+    let strfmt = match get_float_fmt() {
+        FloatFmt::Full => "full",
+        FloatFmt::Mixed => "mixed",
+    };
+    Ok(strfmt.to_string())
+}
+
+#[pyfunction]
 fn set_float_precision(precision: u8) -> PyResult<()> {
     use polars_core::fmt::{set_float_precision};
     set_float_precision(precision);
     Ok(())
-}
+
+#[pyfunction]
+fn get_float_precision(precision: u8) -> PyResult<()> {
+    use polars_core::fmt::{get_float_precision};
+    Ok(get_float_precision(precision))
 
 #[pymodule]
 fn polars(py: Python, m: &PyModule) -> PyResult<()> {
@@ -699,6 +713,8 @@ fn polars(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(get_index_type)).unwrap();
     m.add_wrapped(wrap_pyfunction!(coalesce_exprs)).unwrap();
     m.add_wrapped(wrap_pyfunction!(set_float_fmt)).unwrap();
+    m.add_wrapped(wrap_pyfunction!(get_float_fmt)).unwrap();
     m.add_wrapped(wrap_pyfunction!(set_float_precision)).unwrap();
+    m.add_wrapped(wrap_pyfunction!(get_float_precision)).unwrap();
     Ok(())
 }

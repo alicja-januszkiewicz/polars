@@ -98,6 +98,7 @@ fn test_groups_large_interval() {
         &ts,
         ClosedWindow::Both,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -112,6 +113,7 @@ fn test_groups_large_interval() {
         &ts,
         ClosedWindow::Left,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -123,6 +125,7 @@ fn test_groups_large_interval() {
         &ts,
         ClosedWindow::Right,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -144,7 +147,7 @@ fn test_offset() {
         Duration::parse("-2m"),
     );
 
-    let b = w.get_earliest_bounds_ns(t);
+    let b = w.get_earliest_bounds_ns(t, NO_TIMEZONE).unwrap();
     let start = NaiveDate::from_ymd_opt(2020, 1, 1)
         .unwrap()
         .and_hms_opt(23, 58, 0)
@@ -184,7 +187,7 @@ fn test_boundaries() {
     );
 
     // earliest bound is first datapoint: 2021-12-16 00:00:00
-    let b = w.get_earliest_bounds_ns(ts[0]);
+    let b = w.get_earliest_bounds_ns(ts[0], NO_TIMEZONE).unwrap();
     assert_eq!(b.start, start.timestamp_nanos());
 
     // test closed: "both" (includes both ends of the interval)
@@ -193,6 +196,7 @@ fn test_boundaries() {
         &ts,
         ClosedWindow::Both,
         TimeUnit::Nanoseconds,
+        &None,
         true,
         true,
         Default::default(),
@@ -288,6 +292,7 @@ fn test_boundaries() {
         &ts,
         ClosedWindow::Left,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -302,6 +307,7 @@ fn test_boundaries() {
         &ts,
         ClosedWindow::Right,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -316,6 +322,7 @@ fn test_boundaries() {
         &ts,
         ClosedWindow::None,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -356,7 +363,7 @@ fn test_boundaries_2() {
     let w = Window::new(Duration::parse("2h"), Duration::parse("1h"), offset);
 
     // earliest bound is first datapoint: 2021-12-16 00:00:00 + 30m offset: 2021-12-16 00:30:00
-    let b = w.get_earliest_bounds_ns(ts[0]);
+    let b = w.get_earliest_bounds_ns(ts[0], NO_TIMEZONE).unwrap();
 
     assert_eq!(b.start, start.timestamp_nanos() + offset.duration_ns());
 
@@ -365,6 +372,7 @@ fn test_boundaries_2() {
         &ts,
         ClosedWindow::Left,
         TimeUnit::Nanoseconds,
+        &None,
         true,
         true,
         Default::default(),
@@ -463,7 +471,7 @@ fn test_boundaries_ms() {
     );
 
     // earliest bound is first datapoint: 2021-12-16 00:00:00
-    let b = w.get_earliest_bounds_ms(ts[0]);
+    let b = w.get_earliest_bounds_ms(ts[0], NO_TIMEZONE).unwrap();
     assert_eq!(b.start, start.timestamp_millis());
 
     // test closed: "both" (includes both ends of the interval)
@@ -472,6 +480,7 @@ fn test_boundaries_ms() {
         &ts,
         ClosedWindow::Both,
         TimeUnit::Milliseconds,
+        &None,
         true,
         true,
         Default::default(),
@@ -567,6 +576,7 @@ fn test_boundaries_ms() {
         &ts,
         ClosedWindow::Left,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -581,6 +591,7 @@ fn test_boundaries_ms() {
         &ts,
         ClosedWindow::Right,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -595,6 +606,7 @@ fn test_boundaries_ms() {
         &ts,
         ClosedWindow::None,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -632,6 +644,7 @@ fn test_rolling_lookback() {
         &dates,
         ClosedWindow::Right,
         TimeUnit::Milliseconds,
+        NO_TIMEZONE.copied(),
     );
     assert_eq!(dates.len(), groups.len());
     assert_eq!(groups[0], [0, 1]); // bound: 22:00 -> 24:00     time: 24:00
@@ -651,6 +664,7 @@ fn test_rolling_lookback() {
         &dates,
         ClosedWindow::Right,
         TimeUnit::Milliseconds,
+        NO_TIMEZONE.copied(),
     );
     assert_eq!(dates.len(), groups.len());
     assert_eq!(groups[0], [0, 3]);
@@ -670,6 +684,7 @@ fn test_rolling_lookback() {
         &dates,
         ClosedWindow::Right,
         TimeUnit::Milliseconds,
+        NO_TIMEZONE.copied(),
     );
     assert_eq!(dates.len(), groups.len());
     assert_eq!(groups[0], [0, 5]);
@@ -691,18 +706,48 @@ fn test_rolling_lookback() {
         ClosedWindow::None,
     ] {
         let offset = Duration::parse("0h");
-        let g0 =
-            groupby_values_iter_full_lookahead(period, offset, &dates, closed_window, tu, 0, None)
-                .collect::<Vec<_>>();
-        let g1 = groupby_values_iter_partial_lookbehind(period, offset, &dates, closed_window, tu)
-            .collect::<Vec<_>>();
+        let g0 = groupby_values_iter_full_lookahead(
+            period,
+            offset,
+            &dates,
+            closed_window,
+            tu,
+            NO_TIMEZONE.copied(),
+            0,
+            None,
+        )
+        .collect::<Vec<_>>();
+        let g1 = groupby_values_iter_partial_lookbehind(
+            period,
+            offset,
+            &dates,
+            closed_window,
+            tu,
+            NO_TIMEZONE.copied(),
+        )
+        .collect::<Vec<_>>();
         assert_eq!(g0, g1);
 
         let offset = Duration::parse("-2h");
-        let g0 = groupby_values_iter_full_lookbehind(period, offset, &dates, closed_window, tu, 0)
-            .collect::<Vec<_>>();
-        let g1 = groupby_values_iter_partial_lookbehind(period, offset, &dates, closed_window, tu)
-            .collect::<Vec<_>>();
+        let g0 = groupby_values_iter_full_lookbehind(
+            period,
+            offset,
+            &dates,
+            closed_window,
+            tu,
+            NO_TIMEZONE.copied(),
+            0,
+        )
+        .collect::<Vec<_>>();
+        let g1 = groupby_values_iter_partial_lookbehind(
+            period,
+            offset,
+            &dates,
+            closed_window,
+            tu,
+            NO_TIMEZONE.copied(),
+        )
+        .collect::<Vec<_>>();
         assert_eq!(g0, g1);
     }
 }
@@ -738,6 +783,7 @@ fn test_end_membership() {
         &time,
         ClosedWindow::Left,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -761,6 +807,7 @@ fn test_groupby_windows_membership_2791() {
         &dates,
         ClosedWindow::Left,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -783,6 +830,7 @@ fn test_groupby_windows_duplicates_2931() {
         &dates,
         ClosedWindow::Left,
         TimeUnit::Milliseconds,
+        &None,
         false,
         false,
         Default::default(),
@@ -812,6 +860,7 @@ fn test_groupby_windows_offsets_3776() {
         &ts,
         ClosedWindow::Right,
         TimeUnit::Nanoseconds,
+        &None,
         false,
         false,
         Default::default(),

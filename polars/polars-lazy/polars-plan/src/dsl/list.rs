@@ -105,6 +105,16 @@ impl ListNameSpace {
             .with_fmt("arr.unique")
     }
 
+    /// Keep only the unique values in every sublist.
+    pub fn unique_stable(self) -> Expr {
+        self.0
+            .map(
+                move |s| Ok(Some(s.list()?.lst_unique_stable()?.into_series())),
+                GetOutput::same_type(),
+            )
+            .with_fmt("arr.unique_stable")
+    }
+
     /// Get items in every sublist by index.
     pub fn get(self, index: Expr) -> Expr {
         self.0
@@ -115,7 +125,7 @@ impl ListNameSpace {
     ///
     /// # Arguments
     /// - `null_on_oob`: Return a null when an index is out of bounds.
-    /// This behavior is more expensive than defaulting to returing an `Error`.
+    /// This behavior is more expensive than defaulting to returning an `Error`.
     #[cfg(feature = "list_take")]
     pub fn take(self, index: Expr, null_on_oob: bool) -> Expr {
         self.0.map_many_private(

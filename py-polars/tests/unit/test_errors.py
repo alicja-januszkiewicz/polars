@@ -444,7 +444,7 @@ def test_file_path_truncate_err() -> None:
     content = "lskdfj".join(str(i) for i in range(25))
     with pytest.raises(
         FileNotFoundError,
-        match=r"\.\.\.42jfdksl32jfdksl22jfdksl12jfdksl02jfdksl91jfdksl81jfdksl71jfdksl61jfdksl51jfdksl41jfdksl",
+        match=r"\.\.\.lskdfj14lskdfj15lskdfj16lskdfj17lskdfj18lskdfj19lskdfj20lskdfj21lskdfj22lskdfj23lskdfj24",
     ):
         pl.read_csv(content)
 
@@ -467,7 +467,7 @@ def test_with_column_duplicates() -> None:
         assert df.with_columns([pl.all().alias("same")]).columns == ["a", "b", "same"]
 
 
-def test_skipp_nulls_err() -> None:
+def test_skip_nulls_err() -> None:
     df = pl.DataFrame({"foo": [None, None]})
 
     with pytest.raises(
@@ -480,3 +480,11 @@ def test_err_on_time_datetime_cast() -> None:
     s = pl.Series([time(10, 0, 0), time(11, 30, 59)])
     with pytest.raises(pl.ComputeError, match=r"cannot cast `Time` to `Datetime`"):
         s.cast(pl.Datetime)
+
+
+def test_invalid_inner_type_cast_list() -> None:
+    s = pl.Series([[-1, 1]])
+    with pytest.raises(
+        pl.ComputeError, match=r"cannot cast list inner type: 'Int64' to Categorical"
+    ):
+        s.cast(pl.List(pl.Categorical))
